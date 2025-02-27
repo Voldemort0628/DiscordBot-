@@ -1,11 +1,11 @@
 import os
 import asyncio
 import sys
-from typing import List, Dict, Set
+from typing import Dict, Set
 import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from models import db, Store, Keyword, MonitorConfig, User
 
 app = Flask(__name__)
@@ -81,7 +81,7 @@ def start_monitor(user_id):
             print(f"No configuration found for user {user_id}")
             return jsonify({"status": "error", "message": "No configuration found"}), 400
 
-    if user_id in user_monitors:
+    if user_id in user_monitors and user_monitors[user_id].running:
         print(f"Monitor already running for user {user_id}")
         return jsonify({"status": "already_running"})
 
@@ -104,7 +104,7 @@ def stop_monitor(user_id):
 
 @app.route('/status/<int:user_id>')
 def status(user_id):
-    """Check status of a specific user's monitor"""
+    """Check if monitor is running for a specific user"""
     is_running = user_id in user_monitors and user_monitors[user_id].running
     status_info = {
         "status": "running" if is_running else "stopped",
@@ -116,7 +116,7 @@ def status(user_id):
 
 @app.route('/')
 def home():
-    """Homepage that shows the monitor status"""
+    """Homepage showing monitor service status"""
     return jsonify({
         "status": "running",
         "active_monitors": len(user_monitors)
