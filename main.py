@@ -19,89 +19,136 @@ class MonitorManager:
         self.start_time = time.time()
         self.last_health_check = time.time()
         self.health_check_interval = 300  # 5 minutes
+        self.consecutive_errors = 0
+        self.max_retry_delay = 300  # 5 minutes max delay
 
     async def initialize(self, app):
         """Initialize monitor with user configuration"""
         with app.app_context():
-            user = User.query.get(self.user_id)
-            if not user or not user.enabled:
-                logger.error(f"User {self.user_id} not found or disabled")
+            try:
+                user = User.query.get(self.user_id)
+                if not user or not user.enabled:
+                    logger.error(f"User {self.user_id} not found or disabled")
+                    return False
+
+                config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
+                if not config:
+                    logger.error(f"No configuration found for user {self.user_id}")
+                    return False
+
+                # Get proxies if enabled
+                proxies = None
+                if config.use_proxies:
+                    proxies = [
+                        f"{p.protocol}://{p.username}:{p.password}@{p.ip}:{p.port}"
+                        if p.username and p.password else
+                        f"{p.protocol}://{p.ip}:{p.port}"
+                        for p in user.proxies if p.enabled
+                    ]
+
+                # Initialize monitor with configuration
+                self.monitor = ShopifyMonitor(
+                    rate_limit=config.rate_limit,
+                    proxies=proxies
+                )
+
+                # Initialize webhook
+                if not user.discord_webhook_url:
+                    logger.error("Discord webhook URL not configured")
+                    return False
+
+                self.webhook = RateLimitedDiscordWebhook(webhook_url=user.discord_webhook_url)
+
+                logger.info(f"Initialized monitor for user {user.username} (ID: {self.user_id})")
+                logger.info(f"- Discord Webhook: Configured")
+                logger.info(f"- Rate limit: {config.rate_limit} req/s")
+                logger.info(f"- Monitor delay: {config.monitor_delay}s")
+                logger.info(f"- Proxies: {'Enabled' if proxies else 'Disabled'}")
+
+                return True
+
+            except Exception as e:
+                logger.error(f"Error initializing monitor: {e}")
                 return False
-
-            config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
-            if not config:
-                logger.error(f"No configuration found for user {self.user_id}")
-                return False
-
-            # Get proxies if enabled
-            proxies = None
-            if config.use_proxies:
-                proxies = [
-                    f"{p.protocol}://{p.username}:{p.password}@{p.ip}:{p.port}"
-                    if p.username and p.password else
-                    f"{p.protocol}://{p.ip}:{p.port}"
-                    for p in user.proxies if p.enabled
-                ]
-
-            self.monitor = ShopifyMonitor(
-                rate_limit=config.rate_limit,
-                proxies=proxies,
-                max_concurrent=3
-            )
-            self.webhook = RateLimitedDiscordWebhook(webhook_url=user.discord_webhook_url)
-
-            logger.info(f"Initialized monitor for user {user.username} (ID: {self.user_id})")
-            logger.info(f"- Discord Webhook: {'Configured' if user.discord_webhook_url else 'Not configured'}")
-            logger.info(f"- Rate limit: {config.rate_limit} req/s")
-            logger.info(f"- Monitor delay: {config.monitor_delay}s")
-            logger.info(f"- Proxies: {'Enabled' if proxies else 'Disabled'}")
-
-            return True
 
     async def health_check(self, app) -> bool:
         """Perform periodic health check"""
         current_time = time.time()
+
+        # Skip if not enough time has passed
         if current_time - self.last_health_check < self.health_check_interval:
             return True
 
-        with app.app_context():
-            user = User.query.get(self.user_id)
-            if not user or not user.enabled:
-                logger.warning(f"User {self.user_id} was disabled")
-                return False
+        try:
+            with app.app_context():
+                user = User.query.get(self.user_id)
+                if not user or not user.enabled:
+                    logger.warning(f"User {self.user_id} was disabled")
+                    return False
 
-            config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
-            if not config:
-                logger.error(f"Configuration missing for user {self.user_id}")
-                return False
+                config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
+                if not config:
+                    logger.error(f"Configuration missing for user {self.user_id}")
+                    return False
 
-        self.last_health_check = current_time
-        return True
+                # Verify webhook
+                if not user.discord_webhook_url:
+                    logger.error("Discord webhook URL not configured")
+                    return False
+
+            self.last_health_check = current_time
+            return True
+
+        except Exception as e:
+            logger.error(f"Health check error: {e}")
+            return False
 
     async def monitor_stores(self, app):
         """Monitor all active stores for the user"""
         try:
             with app.app_context():
+                # Get active stores and keywords
                 active_stores = Store.query.filter_by(user_id=self.user_id, enabled=True).all()
                 active_keywords = Keyword.query.filter_by(user_id=self.user_id, enabled=True).all()
 
-                if not active_stores or not active_keywords:
-                    logger.info("No active stores or keywords to monitor")
+                if not active_stores:
+                    logger.info("No active stores to monitor")
+                    return True
+
+                if not active_keywords:
+                    logger.info("No active keywords to monitor")
                     return True
 
                 store_urls = [store.url for store in active_stores]
                 keywords = [kw.word for kw in active_keywords]
 
                 logger.info(f"Processing {len(store_urls)} stores with {len(keywords)} keywords")
-                products = await self.monitor.monitor_stores(store_urls, keywords)
 
-                for product in products:
-                    await self.webhook.send_product_notification(product)
+                # Monitor stores and handle products
+                try:
+                    products = await self.monitor.monitor_stores(store_urls, keywords)
+                    logger.info(f"Found {len(products)} matching products")
 
-                return True
+                    for product in products:
+                        try:
+                            await self.webhook.send_product_notification(product)
+                        except Exception as e:
+                            logger.error(f"Error sending notification: {e}")
+                            continue
+
+                    self.consecutive_errors = 0
+                    return True
+
+                except Exception as e:
+                    self.consecutive_errors += 1
+                    retry_delay = min(self.max_retry_delay, 2 ** self.consecutive_errors)
+                    logger.error(f"Monitor error (attempt {self.consecutive_errors}): {e}")
+                    logger.info(f"Retrying in {retry_delay} seconds")
+                    await asyncio.sleep(retry_delay)
+                    return True
 
         except Exception as e:
-            logger.error(f"Monitor cycle error: {e}")
+            logger.error(f"Fatal monitor error: {e}")
             logger.error(traceback.format_exc())
             return False
 
@@ -123,7 +170,7 @@ class MonitorManager:
 
                     # Monitor cycle
                     if not await self.monitor_stores(app):
-                        logger.error("Monitor cycle failed, restarting")
+                        logger.error("Monitor cycle failed, stopping")
                         break
 
                     # Get delay from config

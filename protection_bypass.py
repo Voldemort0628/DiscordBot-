@@ -1,24 +1,143 @@
+import aiohttp
 import json
 import random
 import time
 import hashlib
 import base64
-import cloudscraper
 from typing import Dict, Optional
 from datetime import datetime
+import logging
 
 class ProtectionBypass:
     def __init__(self):
         self.session_id = hashlib.md5(str(time.time()).encode()).hexdigest()
-        self.client_version = "1.5.0"
         self.init_time = int(time.time() * 1000)
-        self.scraper = cloudscraper.create_scraper(
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+        self.cookies = {}
+        self.client_version = "1.5.0" #retained from original
+        self.scraper = cloudscraper.create_scraper( #retained from original
             browser={
                 'browser': 'chrome',
                 'platform': 'windows',
                 'desktop': True
             }
         )
+
+    def get_shopify_headers(self, store_url: str) -> Dict:
+        """Get headers for Shopify with anti-bot measures"""
+        timestamp = int(time.time() * 1000)
+
+        # Basic client info
+        client_info = {
+            "userAgent": self.headers['User-Agent'],
+            "language": "en-US",
+            "colorDepth": 24,
+            "deviceMemory": 8,
+            "hardwareConcurrency": 12,
+            "screenResolution": [1920, 1080],
+            "availableScreenResolution": [1920, 1040],
+            "timezoneOffset": -300,
+            "timezone": "America/New_York",
+            "sessionStorage": True,
+            "localStorage": True,
+            "indexedDb": True,
+            "cpuClass": "unknown",
+            "platform": "Win32",
+            "plugins": [
+                ["Chrome PDF Plugin", "Portable Document Format"],
+                ["Chrome PDF Viewer", ""],
+                ["Native Client", ""]
+            ]
+        }
+
+        # Generate client-specific token
+        client_token = base64.b64encode(
+            hashlib.sha256(json.dumps(client_info).encode()).digest()
+        ).decode()
+
+        headers = self.headers.copy()
+        headers.update({
+            'Origin': store_url,
+            'Referer': store_url,
+            'X-Shop-Client': client_token,
+            'X-Shop-Time': str(timestamp),
+            'X-Shop-Visit-Id': self.session_id,
+            'X-Shopify-Storefront-Access-Token': 'public',
+        })
+
+        return headers
+
+    def get_cookies(self, store_url: str) -> Dict:
+        """Generate store-specific cookies"""
+        timestamp = int(time.time())
+        cookies = {
+            '_s': self.session_id,
+            '_shopify_s': self.session_id,
+            '_shopify_y': str(timestamp - 86400),  # 24h ago
+            '_y': str(timestamp - 86400),
+            'cart_currency': 'USD',
+            'cart_ts': str(timestamp),
+            'cart_ver': '2',
+            'localization': 'US',
+        }
+        return cookies
+
+    async def verify_store(self, session: aiohttp.ClientSession, store_url: str) -> bool:
+        """Verify store accessibility and determine protection level"""
+        try:
+            # Initial request to check response and collect cookies
+            async with session.get(store_url, timeout=10) as response:
+                if response.status != 200:
+                    return False
+
+                # Store any cookies returned
+                for cookie in response.cookies:
+                    self.cookies[cookie.key] = cookie.value
+
+                # Check response headers for protection indicators
+                headers = response.headers
+                is_protected = any([
+                    'cloudflare' in headers.get('server', '').lower(),
+                    'akamai' in str(headers).lower(),
+                    'incap' in str(headers).lower(),
+                    '_cfduid' in str(response.cookies)
+                ])
+
+                if is_protected:
+                    # Add protection-specific headers and cookies
+                    self.headers.update(self.get_shopify_headers(store_url))
+                    self.cookies.update(self.get_cookies(store_url))
+
+                return True
+
+        except Exception as e:
+            logging.error(f"Error verifying store {store_url}: {e}")
+            return False
+
+    def get_request_params(self, store_url: str) -> Dict:
+        """Get all necessary request parameters for a store"""
+        return {
+            'headers': self.headers,
+            'cookies': self.cookies,
+            'timeout': aiohttp.ClientTimeout(total=30),
+            'ssl': False
+        }
+
 
     def _generate_px_payload(self) -> Dict:
         """Generate PerimeterX payload for Walmart"""
@@ -36,7 +155,7 @@ class ProtectionBypass:
             "pc": self.client_version,
             "ex": {
                 "baseUrl": "www.walmart.com",
-                "userAgent": self.scraper.headers['User-Agent'],
+                "userAgent": self.headers['User-Agent'],
                 "cookie": True,
                 "localStorage": True,
                 "webGL": True
@@ -117,7 +236,7 @@ class ProtectionBypass:
         """Get headers for bypassing Walmart's PerimeterX"""
         px_payload = self._generate_px_payload()
 
-        headers = self.scraper.headers.copy()
+        headers = self.headers.copy()
         headers.update({
             "X-PX-AUTHORIZATION": base64.b64encode(json.dumps(px_payload).encode()).decode(),
             "X-PX-CLIENT-VERSION": self.client_version,
@@ -131,7 +250,7 @@ class ProtectionBypass:
         """Get headers for bypassing Target's Shape Security"""
         shape_payload = self._generate_shape_payload()
 
-        headers = self.scraper.headers.copy()
+        headers = self.headers.copy()
         headers.update({
             "X-SHAPE-UTC": str(int(time.time())),
             "X-SHAPE-CLIENT": base64.b64encode(json.dumps(shape_payload).encode()).decode(),
@@ -145,7 +264,7 @@ class ProtectionBypass:
         """Get headers for bypassing Best Buy's Akamai"""
         akamai_payload = self._generate_akamai_payload()
 
-        headers = self.scraper.headers.copy()
+        headers = self.headers.copy()
         headers.update({
             "_abck": hashlib.sha256(str(time.time()).encode()).hexdigest(),
             "bm_sz": self.session_id,
@@ -184,3 +303,5 @@ class ProtectionBypass:
             return self.get_bestbuy_headers()
         else:
             return {}
+
+import cloudscraper #Import needed for original code
