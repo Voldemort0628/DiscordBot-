@@ -101,7 +101,10 @@ def home():
 @app.route('/dashboard')
 def redirect_to_dashboard():
     """Redirect to the main dashboard app"""
-    return "Visit the web dashboard to manage the monitor"
+    from flask import redirect
+    # Redirect to the web dashboard
+    dashboard_url = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co:8080"
+    return redirect(dashboard_url)
 
 @app.route('/status')
 def status():
