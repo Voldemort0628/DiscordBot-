@@ -116,4 +116,5 @@ if __name__ == "__main__":
     monitor_thread.start()
     
     # Start the Flask server
+    # Make sure to bind to 0.0.0.0 for Replit deployment
     app.run(host='0.0.0.0', port=5000)
