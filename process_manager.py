@@ -18,11 +18,16 @@ class ProcessManager:
         """Find process using specified port"""
         try:
             for conn in psutil.net_connections(kind='inet'):
-                if hasattr(conn.laddr, 'port') and conn.laddr.port == port:
-                    proc = psutil.Process(conn.pid)
-                    logger.info(f"Found process {proc.pid} using port {port}")
-                    return proc
-        except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError) as e:
+                # Safely handle connection objects
+                try:
+                    if conn.laddr and len(conn.laddr) >= 2 and conn.laddr[1] == port:
+                        proc = psutil.Process(conn.pid)
+                        logger.info(f"Found process {proc.pid} using port {port}")
+                        return proc
+                except (AttributeError, IndexError) as e:
+                    logger.error(f"Error processing connection: {e}")
+                    continue
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
             logger.error(f"Error finding process by port: {e}")
         return None
 

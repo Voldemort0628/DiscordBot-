@@ -105,23 +105,30 @@ class ShopifyMonitor:
 
             # Fetch product data with retry logic
             max_retries = 3
+            product_data = None  # Initialize product_data
+
             for attempt in range(max_retries):
                 try:
                     with self.rate_limiter:
                         response = self.session.get(product_url, timeout=10)
                         response.raise_for_status()
-                        product_data = response.json().get('product', {})
-                        break
+                        response_data = response.json()
+                        product_data = response_data.get('product', {})
+                        if product_data:  # Only break if we got valid data
+                            break
+                        logger.warning(f"Empty product data received for {product_url}")
                 except requests.exceptions.RequestException as e:
                     log_scraping_error(product_url, e, {
                         'attempt': attempt + 1,
                         'max_retries': max_retries
                     })
                     if attempt == max_retries - 1:
-                        raise
+                        logger.error(f"Failed to fetch product data after {max_retries} attempts")
+                        return {'variants': []}
                     time.sleep(1 * (attempt + 1))
 
             if not product_data:
+                logger.warning(f"No valid product data found for {product_url}")
                 return {'variants': []}
 
             # Extract variant information
