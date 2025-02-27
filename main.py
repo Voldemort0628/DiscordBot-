@@ -73,31 +73,47 @@ class UserMonitor:
 @app.route('/start_monitor/<int:user_id>')
 def start_monitor(user_id):
     """Start a new monitor instance for a user"""
+    print(f"Received start monitor request for user {user_id}")
+
+    with app.app_context():
+        # Verify user exists and has configuration
+        config = MonitorConfig.query.filter_by(user_id=user_id).first()
+        if not config:
+            print(f"No configuration found for user {user_id}")
+            return {"status": "error", "message": "No configuration found"}, 400
+
     if user_id in user_monitors:
+        print(f"Monitor already running for user {user_id}")
         return {"status": "already_running"}
 
     monitor = UserMonitor(user_id)
     user_monitors[user_id] = monitor
     asyncio.create_task(monitor.run_monitor())
+    print(f"Started monitor for user {user_id}")
     return {"status": "started"}
 
 @app.route('/stop_monitor/<int:user_id>')
 def stop_monitor(user_id):
     """Stop the monitor instance for a user"""
+    print(f"Received stop monitor request for user {user_id}")
     if user_id in user_monitors:
         user_monitors[user_id].running = False
         del user_monitors[user_id]
+        print(f"Stopped monitor for user {user_id}")
         return {"status": "stopped"}
     return {"status": "not_running"}
 
 @app.route('/status/<int:user_id>')
 def status(user_id):
+    """Check status of a specific user's monitor"""
     is_running = user_id in user_monitors and user_monitors[user_id].running
-    return {
+    status_info = {
         "status": "running" if is_running else "stopped",
         "user_id": user_id,
         "active_monitors": len(user_monitors)
     }
+    print(f"Status check for user {user_id}: {status_info}")
+    return status_info
 
 @app.route('/')
 def home():

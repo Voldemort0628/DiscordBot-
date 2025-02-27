@@ -20,10 +20,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# Get the Replit domain for monitor service communication
 REPLIT_DOMAIN = os.environ.get('REPL_ID', None)
 if REPLIT_DOMAIN:
-    MONITOR_SERVICE_URL = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co:3000"
+    # Use the same domain for both services, just different ports
+    BASE_URL = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
+    MONITOR_SERVICE_URL = f"{BASE_URL}:3000"
 else:
     MONITOR_SERVICE_URL = "http://localhost:3000"  # Local development fallback
 
@@ -35,6 +36,7 @@ def is_monitor_running():
     """Check if the monitor is running for the current user"""
     try:
         response = requests.get(f"{MONITOR_SERVICE_URL}/status/{current_user.id}")
+        print(f"Checking monitor status at: {MONITOR_SERVICE_URL}/status/{current_user.id}")
         return response.json().get('status') == 'running'
     except Exception as e:
         print(f"Error checking monitor status: {e}")
@@ -47,24 +49,40 @@ def toggle_monitor():
     action = 'start' if not is_monitor_running() else 'stop'
     monitor_url = f"{MONITOR_SERVICE_URL}/{action}_monitor/{current_user.id}"
     try:
+        print(f"Sending request to: {monitor_url}")
         response = requests.get(monitor_url)
         response.raise_for_status()
         flash(f'Monitor {action}ed successfully')
     except requests.exceptions.RequestException as e:
         flash(f'Error toggling monitor: {str(e)}', 'error')
+        print(f"Monitor toggle error: {e}")
 
     return redirect(url_for('dashboard'))
 
 @app.route('/')
 @login_required
 def dashboard():
+    # Ensure we get only the current user's data
     stores = Store.query.filter_by(added_by=current_user.id).all()
     keywords = Keyword.query.filter_by(added_by=current_user.id).all()
+
+    # Create config for user if it doesn't exist
     config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
+    if not config:
+        config = MonitorConfig(
+            user_id=current_user.id,
+            rate_limit=1.0,
+            monitor_delay=30,
+            max_products=250
+        )
+        db.session.add(config)
+        db.session.commit()
+
     monitor_running = is_monitor_running()
-    return render_template('dashboard.html', 
-                        stores=stores, 
-                        keywords=keywords, 
+
+    return render_template('dashboard.html',
+                        stores=stores,
+                        keywords=keywords,
                         config=config,
                         monitor_running=monitor_running)
 
