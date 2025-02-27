@@ -3,116 +3,94 @@ import aiohttp
 import json
 import time
 import random
-import base64
-import hashlib
 from typing import Dict, List, Optional, Set
 from datetime import datetime
 from collections import deque
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from aiohttp import ClientTimeout, TCPConnector, ClientError
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 from logger_config import scraper_logger
 
 logger = scraper_logger
 
-class BrowserProfile:
-    """Emulate realistic browser fingerprints"""
-    def __init__(self):
-        self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-        ]
-        self.languages = ['en-US,en;q=0.9', 'en-GB,en;q=0.9', 'en-CA,en;q=0.9']
-        self.platforms = ['Windows', 'MacIntel']
-
-    def generate(self) -> Dict:
-        """Generate a consistent browser profile"""
-        user_agent = random.choice(self.user_agents)
-        language = random.choice(self.languages)
-        platform = random.choice(self.platforms)
-
-        return {
-            'User-Agent': user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': language,
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'DNT': '1',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': f'"{platform}"'
-        }
-
 class StoreVerifier:
-    """Verify store accessibility and type"""
+    """Verify Shopify stores with multiple detection methods"""
     def __init__(self):
         self.verified_stores: Set[str] = set()
-        self.store_types: Dict[str, str] = {}
+        self.failed_stores: Dict[str, Dict] = {}
 
     async def verify_store(self, session: aiohttp.ClientSession, store_url: str) -> bool:
-        """Verify store with multiple checks"""
+        """Verify if store is Shopify using multiple methods"""
         try:
             if store_url in self.verified_stores:
                 return True
 
-            # Try direct store access first
-            async with session.get(store_url, ssl=False, timeout=10) as response:
-                if response.status != 200:
-                    logger.error(f"Store {store_url} returned status {response.status}")
+            if store_url in self.failed_stores:
+                if time.time() - self.failed_stores[store_url]['timestamp'] < 3600:
                     return False
+                del self.failed_stores[store_url]
 
-                # Check if it's a Shopify store
-                is_shopify = False
-                for header in response.headers:
-                    if 'shopify' in header.lower():
-                        is_shopify = True
-                        break
-
-                if not is_shopify:
-                    logger.error(f"Store {store_url} does not appear to be a Shopify store")
-                    return False
-
-            # Try products.json endpoint
+            # Method 1: Check products.json endpoint
             products_url = f"{store_url.rstrip('/')}/products.json"
-            async with session.get(products_url, ssl=False, timeout=10) as response:
-                if response.status == 404:
-                    logger.error(f"Products endpoint not found for {store_url}")
-                    return False
-                elif response.status == 403:
-                    logger.error(f"Access forbidden for {store_url}")
-                    return False
-                elif response.status == 429:
-                    logger.warning(f"Rate limited while verifying {store_url}")
-                    await asyncio.sleep(5)  # Basic backoff
-                    return False
+            try:
+                async with session.get(products_url, ssl=False, timeout=10) as response:
+                    if response.status == 200:
+                        try:
+                            await response.json()
+                            self.verified_stores.add(store_url)
+                            return True
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
 
-                # Try parsing response as JSON
-                try:
-                    await response.json()
-                except ValueError:
-                    logger.error(f"Invalid JSON response from {store_url}")
-                    return False
+            # Method 2: Check for Shopify assets
+            try:
+                async with session.get(store_url, ssl=False, timeout=10) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        shopify_indicators = [
+                            'shopify.com',
+                            '/cdn/shop/',
+                            'Shopify.theme',
+                            'myshopify.com',
+                            'shopifycdn.com'
+                        ]
+                        if any(indicator in html for indicator in shopify_indicators):
+                            self.verified_stores.add(store_url)
+                            return True
+            except Exception:
+                pass
 
-            self.verified_stores.add(store_url)
-            return True
+            # Method 3: Try product handle lookup
+            try:
+                test_url = f"{store_url.rstrip('/')}/products/does-not-exist"
+                async with session.get(test_url, ssl=False, timeout=10) as response:
+                    if response.status == 404:
+                        html = await response.text()
+                        if any(x in html.lower() for x in ['shopify', 'product not found']):
+                            self.verified_stores.add(store_url)
+                            return True
+            except Exception:
+                pass
+
+            # Store failed verification
+            self.failed_stores[store_url] = {
+                'timestamp': time.time(),
+                'attempts': self.failed_stores.get(store_url, {}).get('attempts', 0) + 1
+            }
+            return False
 
         except Exception as e:
             logger.error(f"Error verifying store {store_url}: {e}")
             return False
 
 class ShopifyMonitor:
-    """Advanced Shopify monitor"""
+    """Advanced Shopify monitor with robust store verification"""
     def __init__(self, rate_limit: float = 1.0, proxies: Optional[List[str]] = None):
         self.rate_limit = rate_limit
         self.proxies = proxies or []
-        self.browser_profile = BrowserProfile()
         self.store_verifier = StoreVerifier()
         self.session: Optional[aiohttp.ClientSession] = None
         self.last_request: Dict[str, float] = {}
@@ -127,7 +105,8 @@ class ShopifyMonitor:
             connector = TCPConnector(ssl=False, limit=10)
             self.session = aiohttp.ClientSession(
                 timeout=timeout,
-                connector=connector
+                connector=connector,
+                headers={'User-Agent': USER_AGENT}
             )
 
     async def close(self):
@@ -147,55 +126,29 @@ class ShopifyMonitor:
 
         self.last_request[domain] = time.time()
 
-    def _get_headers(self, store_url: str) -> Dict:
-        """Get request headers"""
-        headers = self.browser_profile.generate()
-        headers.update({
-            'Origin': store_url,
-            'Referer': store_url,
-            'X-Requested-With': 'XMLHttpRequest'
-        })
-        return headers
-
-    def _get_cookies(self, store_url: str) -> Dict:
-        """Get store cookies"""
-        domain = urlparse(store_url).netloc
-        if domain not in self.store_cookies:
-            self.store_cookies[domain] = {
-                '_shopify_y': str(int(time.time() - 86400)),
-                'cart_currency': 'USD',
-                'cart_ts': str(int(time.time())),
-                '_shopify_s': hashlib.md5(domain.encode()).hexdigest()
-            }
-        return self.store_cookies[domain]
-
     async def get_store_products(self, store_url: str) -> Optional[List[Dict]]:
-        """Fetch products with error handling"""
+        """Fetch products with improved error handling"""
         domain = urlparse(store_url).netloc
         retry_count = self.consecutive_errors.get(domain, 0)
 
         try:
             # Verify store first
             if not await self.store_verifier.verify_store(self.session, store_url):
-                logger.error(f"Failed to verify store {store_url}")
                 self.consecutive_errors[domain] = retry_count + 1
                 return None
 
             # Rate limiting
             await self._wait_for_rate_limit(domain)
 
-            # Prepare request
-            url = f"{store_url.rstrip('/')}/products.json"
-            headers = self._get_headers(store_url)
-            cookies = self._get_cookies(store_url)
-
             # Make request
-            async with self.session.get(
-                url,
-                headers=headers,
-                cookies=cookies,
-                ssl=False
-            ) as response:
+            url = f"{store_url.rstrip('/')}/products.json"
+            headers = {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': store_url
+            }
+
+            async with self.session.get(url, headers=headers, ssl=False) as response:
                 if response.status == 429:
                     logger.warning(f"Rate limited on {store_url}")
                     self.consecutive_errors[domain] = retry_count + 1
@@ -206,12 +159,6 @@ class ShopifyMonitor:
                     self.consecutive_errors[domain] = retry_count + 1
                     return None
 
-                # Update cookies
-                for cookie_name, cookie_value in response.cookies.items():
-                    if hasattr(cookie_value, 'value'):
-                        self.store_cookies[domain][cookie_name] = cookie_value.value
-
-                # Parse response
                 try:
                     data = await response.json()
                     self.consecutive_errors[domain] = 0  # Reset on success
