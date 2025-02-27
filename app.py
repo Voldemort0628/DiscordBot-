@@ -2,6 +2,7 @@ from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig
 from forms import LoginForm, StoreForm, KeywordForm, ConfigForm
+from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
 import os
 
 app = Flask(__name__)
@@ -80,7 +81,7 @@ def manage_config():
         config = MonitorConfig()
         db.session.add(config)
         db.session.commit()
-    
+
     form = ConfigForm(obj=config)
     if form.validate_on_submit():
         form.populate_obj(config)
@@ -98,4 +99,19 @@ if __name__ == '__main__':
             admin.set_password('admin')  # Change this in production
             db.session.add(admin)
             db.session.commit()
+
+        # Populate default stores if none exist
+        if not Store.query.first():
+            for store_url in SHOPIFY_STORES:
+                store = Store(url=store_url, enabled=True, added_by=1)  # admin user id is 1
+                db.session.add(store)
+            db.session.commit()
+
+        # Populate default keywords if none exist
+        if not Keyword.query.first():
+            for word in DEFAULT_KEYWORDS:
+                keyword = Keyword(word=word, enabled=True, added_by=1)  # admin user id is 1
+                db.session.add(keyword)
+            db.session.commit()
+
     app.run(host='0.0.0.0', port=5000)

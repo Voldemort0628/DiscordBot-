@@ -6,7 +6,7 @@ import random
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 
 class ShopifyMonitor:
-    def __init__(self):
+    def __init__(self, rate_limit: float = SHOPIFY_RATE_LIMIT):
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": USER_AGENT,
@@ -15,15 +15,16 @@ class ShopifyMonitor:
         self.last_request_time = 0
         self.failed_stores = set()
         self.retry_counts = {}
+        self.rate_limit = rate_limit
 
     def _rate_limit(self):
         """Implements rate limiting for Shopify requests with jitter"""
         current_time = time.time()
         time_passed = current_time - self.last_request_time
-        if time_passed < 1/SHOPIFY_RATE_LIMIT:
+        if time_passed < 1/self.rate_limit:
             # Add random jitter between 0-0.5 seconds
             jitter = random.uniform(0, 0.5)
-            time.sleep(1/SHOPIFY_RATE_LIMIT - time_passed + jitter)
+            time.sleep(1/self.rate_limit - time_passed + jitter)
         self.last_request_time = time.time()
 
     def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
