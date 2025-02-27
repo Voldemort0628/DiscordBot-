@@ -1,0 +1,18 @@
+025-02-27 23:22:42,989 - scraper - ERROR - Error fetching https://www.deadstock.ca: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,000 - scraper - ERROR - Error fetching https://www.socialstatuspgh.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,001 - scraper - ERROR - Error fetching https://www.blendsus.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,009 - scraper - ERROR - Error fetching https://www.notre-shop.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,011 - scraper - ERROR - Error fetching https://www.bowsandarrowsberkeley.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,056 - scraper - ERROR - HTTP 404 from https://www.jimmyjazz.com
+2025-02-27 23:22:43,057 - scraper - ERROR - Error fetching https://www.featuresneakerboutique.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,066 - scraper - ERROR - Error fetching https://www.saintalfred.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,069 - scraper - ERROR - Error fetching https://www.bodega.com: 200, message='Attempt to decode JSON with unexpected mimetype: text/html', url='https://www.bodega.com/products.json'
+2025-02-27 23:22:43,148 - scraper - ERROR - Error fetching https://www.unionjordan2025.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,204 - scraper - ERROR - Error fetching https://www.a-ma-maniere.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,209 - scraper - ERROR - HTTP 402 from https://www.unknwn.com
+2025-02-27 23:22:43,212 - scraper - ERROR - Error fetching https://www.xhibition.co: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,216 - scraper - ERROR - Error fetching https://www.bbbranded.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,235 - scraper - ERROR - Error fetching https://www.apbstore.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,243 - scraper - ERROR - HTTP 404 from https://www.atmosusa.com
+2025-02-27 23:22:43,293 - scraper - ERROR - Error fetching https://www.undefeated.com: 'str' object has no attribute 'value'
+2025-02-27 23:22:43,323 - scraper - ERROR - Error fetching https://www.wishatl.com: 'str' object has no attribute 'value'
