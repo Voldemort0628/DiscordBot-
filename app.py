@@ -1,9 +1,12 @@
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig
-from forms import LoginForm, StoreForm, KeywordForm, ConfigForm
+from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm # Added VariantScraperForm
 from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
+from shopify_monitor import ShopifyMonitor # Added ShopifyMonitor.  May need to be defined elsewhere.
 import os
+import json
+import requests
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -89,6 +92,36 @@ def manage_config():
         flash('Configuration updated successfully')
         return redirect(url_for('dashboard'))
     return render_template('config.html', form=form)
+
+@app.route('/variants', methods=['GET', 'POST'])
+@login_required
+def variant_scraper():
+    form = VariantScraperForm()
+    variants = []
+    cart_url = None
+
+    if form.validate_on_submit():
+        try:
+            # Extract product handle from URL
+            product_url = form.product_url.data
+            store_url = '/'.join(product_url.split('/')[:-2])  # Remove /products/handle
+            product_handle = product_url.split('/')[-1]
+
+            # Fetch product data
+            api_url = f"{store_url}/products/{product_handle}.json"
+            response = requests.get(api_url, timeout=10)
+            response.raise_for_status()
+
+            product_data = response.json()['product']
+            variants = product_data['variants']
+            cart_url = store_url + '/cart'
+
+            flash('Successfully scraped product variants', 'success')
+        except Exception as e:
+            flash(f'Error scraping variants: {str(e)}', 'error')
+
+    return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
+
 
 if __name__ == '__main__':
     with app.app_context():

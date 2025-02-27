@@ -22,3 +22,7 @@ class ConfigForm(FlaskForm):
     monitor_delay = IntegerField('Monitor Delay (seconds)', validators=[DataRequired()])
     max_products = IntegerField('Max Products per Store', validators=[DataRequired()])
     submit = SubmitField('Save Configuration')
+
+class VariantScraperForm(FlaskForm):
+    product_url = StringField('Product URL', validators=[DataRequired(), URL()])
+    submit = SubmitField('Scrape Variants')
