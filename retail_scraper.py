@@ -1,9 +1,10 @@
-import trafilatura
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import List, Dict, Optional
 import json
+import time
+import random
 
 class RetailScrapeResult:
     def __init__(self, title: str, price: float, url: str, retailer: str, image_url: Optional[str] = None):
@@ -17,12 +18,19 @@ class RetailScraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         })
 
     def _clean_price(self, price_str: str) -> float:
         """Convert price string to float"""
-        return float(price_str.replace('$', '').replace(',', '').strip())
+        try:
+            return float(price_str.replace('$', '').replace(',', '').strip())
+        except (ValueError, AttributeError):
+            return 0.0
 
     def scrape_target(self, keyword: str) -> List[RetailScrapeResult]:
         """Scrape Target for Pokemon products"""
@@ -30,25 +38,32 @@ class RetailScraper:
         url = f"https://www.target.com/s?searchTerm={keyword}"
 
         try:
-            downloaded = trafilatura.fetch_url(url)
-            if downloaded:
-                soup = BeautifulSoup(downloaded, 'lxml')
+            print(f"Scraping Target for keyword: {keyword}")
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
                 products = soup.find_all('div', {'data-test': 'product-card'})
+                print(f"Found {len(products)} potential products on Target")
 
                 for product in products:
                     try:
-                        title = product.find('a', {'data-test': 'product-title'}).text.strip()
-                        price = self._clean_price(product.find('span', {'data-test': 'product-price'}).text)
-                        product_url = 'https://www.target.com' + product.find('a')['href']
-                        image_url = product.find('img')['src']
+                        title_elem = product.find('a', {'data-test': 'product-title'})
+                        price_elem = product.find('span', {'data-test': 'product-price'})
 
-                        results.append(RetailScrapeResult(
-                            title=title,
-                            price=price,
-                            url=product_url,
-                            retailer='target',
-                            image_url=image_url
-                        ))
+                        if title_elem and price_elem:
+                            title = title_elem.text.strip()
+                            price = self._clean_price(price_elem.text)
+                            product_url = 'https://www.target.com' + title_elem['href']
+                            image_url = product.find('img')['src'] if product.find('img') else None
+
+                            results.append(RetailScrapeResult(
+                                title=title,
+                                price=price,
+                                url=product_url,
+                                retailer='target',
+                                image_url=image_url
+                            ))
+                            print(f"Added Target product: {title} at ${price}")
                     except Exception as e:
                         print(f"Error processing Target product: {e}")
                         continue
@@ -63,25 +78,33 @@ class RetailScraper:
         url = f"https://www.walmart.com/search?q={keyword}"
 
         try:
-            downloaded = trafilatura.fetch_url(url)
-            if downloaded:
-                soup = BeautifulSoup(downloaded, 'lxml')
+            print(f"Scraping Walmart for keyword: {keyword}")
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
                 products = soup.find_all('div', {'data-item-id': True})
+                print(f"Found {len(products)} potential products on Walmart")
 
                 for product in products:
                     try:
-                        title = product.find('span', {'class': 'normal'}).text.strip()
-                        price = self._clean_price(product.find('div', {'class': 'price-main'}).text)
-                        product_url = 'https://www.walmart.com' + product.find('a')['href']
-                        image_url = product.find('img')['src']
+                        title_elem = product.find('span', {'data-automation-id': 'product-title'})
+                        price_elem = product.find('div', {'data-automation-id': 'product-price'})
+                        link_elem = product.find('a', {'data-item-id': True})
 
-                        results.append(RetailScrapeResult(
-                            title=title,
-                            price=price,
-                            url=product_url,
-                            retailer='walmart',
-                            image_url=image_url
-                        ))
+                        if all([title_elem, price_elem, link_elem]):
+                            title = title_elem.text.strip()
+                            price = self._clean_price(price_elem.text)
+                            product_url = 'https://www.walmart.com' + link_elem['href']
+                            image_url = product.find('img')['src'] if product.find('img') else None
+
+                            results.append(RetailScrapeResult(
+                                title=title,
+                                price=price,
+                                url=product_url,
+                                retailer='walmart',
+                                image_url=image_url
+                            ))
+                            print(f"Added Walmart product: {title} at ${price}")
                     except Exception as e:
                         print(f"Error processing Walmart product: {e}")
                         continue
@@ -96,30 +119,35 @@ class RetailScraper:
         url = f"https://www.bestbuy.com/site/searchpage.jsp?st={keyword}"
 
         try:
-            # Best Buy requires additional headers
+            print(f"Scraping Best Buy for keyword: {keyword}")
+            # Add specific Best Buy headers
             headers = {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Cache-Control': 'max-age=0'
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1'
             }
-            response = requests.get(url, headers={**self.session.headers, **headers}, timeout=10)
+            response = self.session.get(url, headers=headers, timeout=15)
+
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 products = soup.find_all('li', {'class': 'sku-item'})
+                print(f"Found {len(products)} potential products on Best Buy")
 
                 for product in products:
                     try:
                         title_elem = product.find('h4', {'class': 'sku-header'})
                         price_elem = product.find('div', {'class': 'priceView-customer-price'})
                         link_elem = product.find('a', {'class': 'image-link'})
-                        image_elem = product.find('img', {'class': 'product-image'})
 
                         if all([title_elem, price_elem, link_elem]):
                             title = title_elem.text.strip()
                             price = self._clean_price(price_elem.find('span').text)
                             product_url = 'https://www.bestbuy.com' + link_elem['href']
+                            image_elem = product.find('img', {'class': 'product-image'})
                             image_url = image_elem['src'] if image_elem else None
 
                             results.append(RetailScrapeResult(
@@ -129,6 +157,7 @@ class RetailScraper:
                                 retailer='bestbuy',
                                 image_url=image_url
                             ))
+                            print(f"Added Best Buy product: {title} at ${price}")
                     except Exception as e:
                         print(f"Error processing Best Buy product: {e}")
                         continue
@@ -141,6 +170,8 @@ class RetailScraper:
         """Scrape all supported retailers"""
         results = []
         results.extend(self.scrape_target(keyword))
+        time.sleep(random.uniform(1, 2))  # Add delay between retailers
         results.extend(self.scrape_walmart(keyword))
+        time.sleep(random.uniform(1, 2))
         results.extend(self.scrape_bestbuy(keyword))
         return results

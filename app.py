@@ -222,7 +222,9 @@ def retail_scraper():
                     db.session.commit()
                     flash(f'Scrape completed - Found {len(results)} items')
                 except Exception as e:
-                    flash(f'Error during scraping: {str(e)}', 'error')
+                    error_msg = str(e)
+                    print(f"Scraping error: {error_msg}")  # Log the error
+                    flash(f'Error during scraping: {error_msg}', 'error')
 
     scrapers = RetailScraper.query.all()
     return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)
