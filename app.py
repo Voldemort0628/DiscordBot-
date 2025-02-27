@@ -21,8 +21,11 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # Get the Replit domain for monitor service communication
-REPLIT_DOMAIN = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
-MONITOR_SERVICE_URL = f"{REPLIT_DOMAIN}:3000"
+REPLIT_DOMAIN = os.environ.get('REPL_ID', None)
+if REPLIT_DOMAIN:
+    MONITOR_SERVICE_URL = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co:3000"
+else:
+    MONITOR_SERVICE_URL = "http://localhost:3000"  # Local development fallback
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -33,7 +36,8 @@ def is_monitor_running():
     try:
         response = requests.get(f"{MONITOR_SERVICE_URL}/status/{current_user.id}")
         return response.json().get('status') == 'running'
-    except:
+    except Exception as e:
+        print(f"Error checking monitor status: {e}")
         return False
 
 @app.route('/toggle_monitor', methods=['POST'])
