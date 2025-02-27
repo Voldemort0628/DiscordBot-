@@ -112,12 +112,13 @@
                             {{ import_form.hidden_tag() }}
                             <div class="mb-3">
                                 {{ import_form.proxy_list.label(class="form-label") }}
-                                {{ import_form.proxy_list(class="form-control", rows=10) }}
+                                {{ import_form.proxy_list(class="form-control", rows=15, style="font-family: monospace;") }}
                                 <div class="form-text">
-                                    Format: ip:port:username:password or ip:port<br>
-                                    Example:<br>
-                                    1.2.3.4:8080:user:pass<br>
-                                    5.6.7.8:8080
+                                    <p>Format: ip:port:username:password or ip:port</p>
+                                    <p>Paste your proxy list here, one proxy per line. Examples:</p>
+                                    <pre class="text-muted">167.253.103.2:43929:b6zIPTgA:q1qqilpp
+167.253.103.3:37849:b6zIPTgA:q1qqilpp</pre>
+                                    <p>You can paste hundreds of proxies at once.</p>
                                 </div>
                             </div>
                             <div class="mb-3">

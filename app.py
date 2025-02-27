@@ -24,13 +24,16 @@ def is_monitor_running(user_id):
 def create_app():
     app = Flask(__name__)
 
-    # Basic Configuration
+    # Enhanced Configuration
     app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,
         'pool_recycle': 300,
+        'pool_size': 20,
+        'max_overflow': 5,
+        'pool_timeout': 30
     }
 
     # Initialize Flask extensions
@@ -524,7 +527,7 @@ def create_app():
 
     @app.route('/import_proxies/<int:list_id>', methods=['POST'])
     @login_required
-    def import_proxies_to_list(list_id): #Renamed to avoid name collision
+    def import_proxies_to_list(list_id):
         proxy_list = ProxyList.query.get_or_404(list_id)
         if proxy_list.group.user_id != current_user.id:
             flash('Access denied', 'error')
@@ -533,32 +536,40 @@ def create_app():
         import_form = ProxyImportForm()
         if import_form.validate_on_submit():
             try:
-                proxy_data = import_form.proxy_list.data.strip().split('\n')
+                # Split the input by newlines and filter out empty lines
+                proxy_data = [line.strip() for line in import_form.proxy_list.data.split('\n') if line.strip()]
                 protocol = import_form.protocol.data
                 added_count = 0
                 error_count = 0
+                existing_count = 0
 
                 for line in proxy_data:
-                    line = line.strip()
-                    if not line:
-                        continue
-
                     try:
                         parts = line.split(':')
                         if len(parts) not in [2, 4]:
                             error_count += 1
                             continue
 
-                        if len(parts) == 2:
-                            ip, port = parts
-                            username = password = None
-                        else:
-                            ip, port, username, password = parts
+                        ip = parts[0]
+                        port = int(parts[1])
+                        username = parts[2] if len(parts) > 2 else None
+                        password = parts[3] if len(parts) > 3 else None
+
+                        # Check for existing proxy in this list
+                        existing = Proxy.query.filter_by(
+                            list_id=list_id,
+                            ip=ip,
+                            port=port
+                        ).first()
+
+                        if existing:
+                            existing_count += 1
+                            continue
 
                         proxy = Proxy(
                             list_id=list_id,
                             ip=ip,
-                            port=int(port),
+                            port=port,
                             username=username,
                             password=password,
                             protocol=protocol,
@@ -567,11 +578,24 @@ def create_app():
                         db.session.add(proxy)
                         added_count += 1
 
-                    except (ValueError, IndexError):
+                        # Commit in batches to prevent memory issues
+                        if added_count % 50 == 0:
+                            db.session.commit()
+
+                    except (ValueError, IndexError) as e:
+                        print(f"Error processing proxy line '{line}': {e}")
                         error_count += 1
 
+                # Final commit for remaining proxies
                 db.session.commit()
-                flash(f'Successfully added {added_count} proxies. {error_count} failed.')
+
+                status_msg = f'Successfully added {added_count} proxies.'
+                if error_count > 0:
+                    status_msg += f' {error_count} failed.'
+                if existing_count > 0:
+                    status_msg += f' {existing_count} were duplicates.'
+                flash(status_msg)
+
             except Exception as e:
                 db.session.rollback()
                 print(f"Error importing proxies: {e}")
