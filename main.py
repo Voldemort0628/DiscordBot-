@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import os
-from typing import Dict, List, Set
+from typing import Dict, List
 import time
 import traceback
 from shopify_monitor import ShopifyMonitor
@@ -12,7 +12,7 @@ import logging
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -157,11 +157,12 @@ async def main():
                             continue
 
                         # Process stores in smaller batches with adaptive delay
-                        batch_size = min(5, len(active_stores))  # Reduced batch size for better stability
+                        batch_size = min(3, len(active_stores))  # Further reduced batch size
                         all_results = []
 
                         for i in range(0, len(active_stores), batch_size):
                             batch_stores = active_stores[i:i+batch_size]
+                            batch_start_time = time.time()
 
                             tasks = []
                             for store in batch_stores:
@@ -177,13 +178,17 @@ async def main():
                                 )
                                 tasks.append(task)
 
-                            # Add delay between batches to prevent overloading
-                            if i > 0:
-                                await asyncio.sleep(2)  # Increased delay between batches
-
                             try:
                                 batch_results = await asyncio.gather(*tasks, return_exceptions=True)
                                 all_results.extend(batch_results)
+
+                                # Only add delay if we have more batches and the batch was fast
+                                batch_duration = time.time() - batch_start_time
+                                if i + batch_size < len(active_stores) and batch_duration < 2:
+                                    delay = max(0, 2 - batch_duration)
+                                    logger.debug(f"Adding {delay:.2f}s delay between batches")
+                                    await asyncio.sleep(delay)
+
                             except Exception as batch_error:
                                 logger.error(f"Error processing batch: {batch_error}")
                                 continue
@@ -215,19 +220,20 @@ async def main():
                         # Commit the transaction
                         db.session.commit()
 
-                        # Adaptive delay based on results
+                        # Adaptive delay based on results and performance
                         cycle_duration = time.time() - cycle_start_time
                         base_delay = config.monitor_delay
 
-                        # Adjust delay based on results
+                        # Dynamic delay calculation based on results and errors
                         if total_new_products > 0:
-                            actual_delay = max(2, base_delay * 0.75)  # Less aggressive reduction
+                            actual_delay = max(5, base_delay * 0.5)  # Min 5 second delay when finding products
                         elif error_count > 0:
-                            actual_delay = min(base_delay * 1.5, 60)
+                            actual_delay = min(base_delay * 1.5, 60)  # Max 60 second delay on errors
                         else:
                             actual_delay = base_delay
 
-                        sleep_time = max(2, actual_delay - cycle_duration)  # Ensure minimum 2 second delay
+                        # Ensure we don't sleep negative time
+                        sleep_time = max(5, actual_delay - cycle_duration)
                         logger.info(f"Cycle completed in {cycle_duration:.2f}s, waiting {sleep_time:.2f}s...")
                         await asyncio.sleep(sleep_time)
 

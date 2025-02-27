@@ -3,30 +3,55 @@ import time
 import json
 from typing import Dict, List
 import random
+import logging
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
+
+logger = logging.getLogger(__name__)
 
 class RateLimiter:
     def __init__(self, rate_limit):
         self.rate_limit = rate_limit
         self.last_request_time = 0
+        self.consecutive_429s = 0
+        self.backoff_multiplier = 1.0
 
     def __enter__(self):
         current_time = time.time()
         time_passed = current_time - self.last_request_time
-        if time_passed < 1 / self.rate_limit:
-            time.sleep(1 / self.rate_limit - time_passed)
+
+        # Calculate delay based on rate limit and backoff
+        base_delay = 1 / self.rate_limit
+        actual_delay = base_delay * self.backoff_multiplier
+
+        if time_passed < actual_delay:
+            # Add small random jitter (0-100ms) to prevent synchronized requests
+            jitter = random.uniform(0, 0.1)
+            sleep_time = actual_delay - time_passed + jitter
+            logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f}s (backoff: {self.backoff_multiplier:.2f}x)")
+            time.sleep(sleep_time)
+
         self.last_request_time = time.time()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
+        # Adjust backoff based on response
+        if exc_type and "429" in str(exc_val):
+            self.consecutive_429s += 1
+            self.backoff_multiplier = min(8.0, self.backoff_multiplier * 2)
+            logger.warning(f"Rate limit exceeded, increasing backoff to {self.backoff_multiplier:.2f}x")
+        else:
+            self.consecutive_429s = max(0, self.consecutive_429s - 1)
+            if self.consecutive_429s == 0:
+                self.backoff_multiplier = max(1.0, self.backoff_multiplier * 0.75)
 
 class ShopifyMonitor:
     def __init__(self, rate_limit=0.5):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': USER_AGENT,
+            'Accept': 'application/json',
+            'Connection': 'keep-alive',
+            'Accept-Encoding': 'gzip, deflate'
         })
         self.rate_limiter = RateLimiter(rate_limit)
         self.failed_stores = set()
@@ -42,11 +67,20 @@ class ShopifyMonitor:
                     product_url = product_url[:-1]
                 product_url = product_url + '.json'
 
-            # Fetch product data
-            with self.rate_limiter:
-                response = self.session.get(product_url, timeout=10)
-                response.raise_for_status()
-                product_data = response.json().get('product', {})
+            # Fetch product data with retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    with self.rate_limiter:
+                        response = self.session.get(product_url, timeout=10)
+                        response.raise_for_status()
+                        product_data = response.json().get('product', {})
+                        break
+                except requests.exceptions.RequestException as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.warning(f"Retry {attempt + 1}/{max_retries} for {product_url}: {e}")
+                    time.sleep(1 * (attempt + 1))
 
             if not product_data:
                 return {'variants': []}
@@ -69,19 +103,8 @@ class ShopifyMonitor:
             }
 
         except Exception as e:
-            print(f"Error fetching variants from {product_url}: {e}")
+            logger.error(f"Error fetching variants from {product_url}: {e}")
             return {'variants': []}
-
-    def _rate_limit(self):
-        """Implements rate limiting for Shopify requests with jitter"""
-        current_time = time.time()
-        time_passed = current_time - self.last_request_time
-        rate_limit = self.rate_limiter.rate_limit
-        if time_passed < 1/rate_limit:
-            # Add random jitter between 0-0.5 seconds
-            jitter = random.uniform(0, 0.5)
-            time.sleep(1/rate_limit - time_passed + jitter)
-        self.last_request_time = time.time()
 
     def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
         """
@@ -95,28 +118,21 @@ class ShopifyMonitor:
                 return []
             self.retry_counts[store_url] = retry_count + 1
 
-        self._rate_limit()
-
         try:
             # Use a smaller initial limit for faster responses
             initial_limit = 50
             products_url = f"{store_url}/products.json?limit={initial_limit}"
 
-            # Use shorter timeout for faster error detection
-            response = self.session.get(
-                products_url, 
-                timeout=5, 
-                headers={
-                    "Accept-Encoding": "gzip, deflate",
-                    "Cache-Control": "no-cache"
-                }
-            )
-            response.raise_for_status()
+            with self.rate_limiter:
+                response = self.session.get(
+                    products_url,
+                    timeout=10,
+                    headers={'Cache-Control': 'no-cache'}
+                )
+                response.raise_for_status()
+                data = response.json()
 
-            data = response.json()
             matching_products = []
-
-            # Optimize keyword matching with pre-computed lowercase
             lowercase_keywords = [kw.lower() for kw in keywords]
 
             for product in data.get("products", []):
@@ -126,46 +142,21 @@ class ShopifyMonitor:
                     if processed_product:
                         matching_products.append(processed_product)
 
-            # If we got max products and didn't find any matches,
-            # fetch more products only if necessary
-            product_count = len(data.get("products", []))
-            if product_count >= initial_limit and not matching_products and MAX_PRODUCTS > initial_limit:
-                # Get more products in a second request
-                products_url = f"{store_url}/products.json?limit={MAX_PRODUCTS}&page=2"
-
-                try:
-                    response = self.session.get(products_url, timeout=8)
-                    response.raise_for_status()
-                    more_data = response.json()
-
-                    for product in more_data.get("products", []):
-                        product_title_lower = product["title"].lower()
-                        if any(keyword in product_title_lower for keyword in lowercase_keywords):
-                            processed_product = self._process_product(store_url, product)
-                            if processed_product:
-                                matching_products.append(processed_product)
-                except Exception as e:
-                    # If second request fails, still return what we found from first request
-                    print(f"Error fetching additional products from {store_url}: {e}")
-
-            # Reset failed status and retry count if successful
+            # Reset failed status on success
             self.failed_stores.discard(store_url)
             self.retry_counts.pop(store_url, None)
             return matching_products
 
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            print(f"Error fetching products from {store_url}: {e}")
-            if isinstance(e, (requests.exceptions.ConnectionError, 
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching products from {store_url}: {e}")
+            if isinstance(e, (requests.exceptions.ConnectionError,
                             requests.exceptions.Timeout,
                             requests.exceptions.SSLError)):
                 self.failed_stores.add(store_url)
             return []
 
     def _process_product(self, store_url: str, product: Dict) -> Dict:
-        """
-        Processes raw product data into formatted structure
-        Returns empty dict if processing fails
-        """
+        """Process raw product data into formatted structure"""
         try:
             variants = product.get("variants", [])
             sizes = {}
@@ -191,5 +182,5 @@ class ShopifyMonitor:
                 "full_size_run": "Bot 1 FSR" if stock > 0 else "OOS"
             }
         except Exception as e:
-            print(f"Error processing product {product.get('title', 'Unknown')}: {e}")
-            return {}  # Return empty dict instead of None to match return type
+            logger.error(f"Error processing product {product.get('title', 'Unknown')}: {e}")
+            return {}
