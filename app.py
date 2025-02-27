@@ -132,7 +132,31 @@ def create_app():
     @login_required
     def manage_stores():
         form = StoreForm()
-        if form.validate_on_submit():
+        if request.method == 'POST' and 'action' in request.form:
+            try:
+                store_id = request.form.get('store_id')
+                store = Store.query.get_or_404(store_id)
+
+                if store.user_id != current_user.id:
+                    flash('Access denied', 'error')
+                    return redirect(url_for('manage_stores'))
+
+                action = request.form['action']
+                if action == 'toggle':
+                    store.enabled = not store.enabled
+                    db.session.commit()
+                    flash(f"Store {'enabled' if store.enabled else 'disabled'}")
+                elif action == 'delete':
+                    db.session.delete(store)
+                    db.session.commit()
+                    flash('Store deleted')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error processing store action: {e}")
+                flash('Error processing store action. Please try again.', 'error')
+            return redirect(url_for('manage_stores'))
+        
+        elif form.validate_on_submit():
             store = Store(
                 url=form.url.data,
                 enabled=form.enabled.data,
