@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Manage Keywords</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addKeywordModal">
+        Add Keyword
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Keyword</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for keyword in keywords %}
+                    <tr>
+                        <td>{{ keyword.word }}</td>
+                        <td>
+                            <span class="badge {% if keyword.enabled %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ "Active" if keyword.enabled else "Inactive" }}
+                            </span>
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('manage_keywords') }}" style="display: inline;">
+                                <input type="hidden" name="keyword_id" value="{{ keyword.id }}">
+                                <button type="submit" name="action" value="toggle" class="btn btn-sm btn-warning">
+                                    {{ "Disable" if keyword.enabled else "Enable" }}
+                                </button>
+                                <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger">
+                                    Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Keyword Modal -->
+<div class="modal fade" id="addKeywordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Keyword</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.word.label(class="form-label") }}
+                        {{ form.word(class="form-control") }}
+                    </div>
+                    <div class="mb-3 form-check">
+                        {{ form.enabled(class="form-check-input") }}
+                        {{ form.enabled.label(class="form-check-label") }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
