@@ -1,16 +1,12 @@
+import os
 import asyncio
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig, RetailScraper, Proxy
 from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm, ProxyForm, ProxyImportForm
-from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
-from scrapers.target_scraper import TargetScraper  # Import the new Target scraper
-import os
-import json
 import requests
 from datetime import datetime
 from discord_webhook import DiscordWebhook
-import subprocess
 import psutil
 
 app = Flask(__name__)
@@ -24,9 +20,36 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# Get the Replit domain for monitor service communication
+REPLIT_DOMAIN = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
+MONITOR_SERVICE_URL = f"{REPLIT_DOMAIN}:3000"
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+def is_monitor_running():
+    """Check if the monitor is running for the current user"""
+    try:
+        response = requests.get(f"{MONITOR_SERVICE_URL}/status/{current_user.id}")
+        return response.json().get('status') == 'running'
+    except:
+        return False
+
+@app.route('/toggle_monitor', methods=['POST'])
+@login_required
+def toggle_monitor():
+    """Toggle monitor for the current user"""
+    action = 'start' if not is_monitor_running() else 'stop'
+    monitor_url = f"{MONITOR_SERVICE_URL}/{action}_monitor/{current_user.id}"
+    try:
+        response = requests.get(monitor_url)
+        response.raise_for_status()
+        flash(f'Monitor {action}ed successfully')
+    except requests.exceptions.RequestException as e:
+        flash(f'Error toggling monitor: {str(e)}', 'error')
+
+    return redirect(url_for('dashboard'))
 
 @app.route('/')
 @login_required
@@ -141,7 +164,6 @@ def manage_config():
 
         # Restart monitor if it's running to pick up new webhook URL
         if is_monitor_running():
-            #subprocess.Popen(['python', 'main.py']) #Commented out as per new implementation
             flash('Monitor restarted with new configuration')
 
         return redirect(url_for('dashboard'))
@@ -176,28 +198,6 @@ def variant_scraper():
 
     return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
 
-
-@app.route('/toggle_monitor', methods=['POST'])
-@login_required
-def toggle_monitor():
-    """Toggle monitor for the current user"""
-    monitor_url = f"http://localhost:3000/{'start' if not is_monitor_running() else 'stop'}_monitor/{current_user.id}"
-    try:
-        response = requests.get(monitor_url)
-        response.raise_for_status()
-        flash('Monitor started successfully' if 'start' in monitor_url else 'Monitor stopped successfully')
-    except requests.exceptions.RequestException as e:
-        flash(f'Error toggling monitor: {str(e)}', 'error')
-
-    return redirect(url_for('dashboard'))
-
-def is_monitor_running():
-    """Check if the monitor is running for the current user"""
-    try:
-        response = requests.get(f"http://localhost:3000/status/{current_user.id}")
-        return response.json().get('status') == 'running'
-    except:
-        return False
 
 @app.route('/retail', methods=['GET', 'POST'])
 @login_required
@@ -385,26 +385,15 @@ def register():
 
 if __name__ == '__main__':
     with app.app_context():
+        # Initialize database
         db.create_all()
+
         # Create default admin user if none exists
         if not User.query.first():
             admin = User(username='admin')
-            admin.set_password('admin')  # Change this in production
+            admin.set_password('admin')
             db.session.add(admin)
             db.session.commit()
 
-        # Populate default stores if none exist
-        if not Store.query.first():
-            for store_url in SHOPIFY_STORES:
-                store = Store(url=store_url, enabled=True, added_by=1)  # admin user id is 1
-                db.session.add(store)
-            db.session.commit()
-
-        # Populate default keywords if none exist
-        if not Keyword.query.first():
-            for word in DEFAULT_KEYWORDS:
-                keyword = Keyword(word=word, enabled=True, added_by=1)  # admin user id is 1
-                db.session.add(keyword)
-            db.session.commit()
-
+    # ALWAYS serve the app on port 5000
     app.run(host='0.0.0.0', port=5000)
