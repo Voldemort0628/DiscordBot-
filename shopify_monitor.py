@@ -1,8 +1,11 @@
-import requests
-import time
+import asyncio
+import aiohttp
 import json
-from typing import Dict, List, Optional
+import time
 import random
+from typing import Dict, List, Optional, Set
+from datetime import datetime
+from collections import deque
 import logging
 import socket
 from urllib.parse import urlparse
@@ -13,6 +16,378 @@ from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 from logger_config import scraper_logger, log_scraping_error
 
 logger = scraper_logger
+
+class SessionManager:
+    def __init__(self, proxy_list: Optional[List[str]] = None):
+        self.proxy_list = proxy_list or []
+        self.sessions: Dict[str, aiohttp.ClientSession] = {}
+        self.failed_proxies: Set[str] = set()
+        self.proxy_stats: Dict[str, Dict] = {}
+
+    async def get_session(self, store_url: str) -> aiohttp.ClientSession:
+        """Get or create a session for a store with proxy rotation"""
+        if store_url not in self.sessions or self.sessions[store_url].closed:
+            proxy = self._get_next_proxy()
+            timeout = aiohttp.ClientTimeout(total=10, connect=5)
+            self.sessions[store_url] = aiohttp.ClientSession(
+                timeout=timeout,
+                headers={
+                    'User-Agent': USER_AGENT,
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                },
+                proxy=proxy
+            )
+        return self.sessions[store_url]
+
+    def _get_next_proxy(self) -> Optional[str]:
+        """Get next working proxy with stats tracking"""
+        if not self.proxy_list:
+            return None
+
+        working_proxies = [p for p in self.proxy_list if p not in self.failed_proxies]
+        if not working_proxies:
+            # Reset failed proxies if all are failed
+            self.failed_proxies.clear()
+            working_proxies = self.proxy_list
+
+        proxy = random.choice(working_proxies)
+        if proxy not in self.proxy_stats:
+            self.proxy_stats[proxy] = {'success': 0, 'failures': 0}
+        return proxy
+
+    def mark_proxy_failed(self, proxy: str):
+        """Mark a proxy as failed"""
+        if proxy:
+            self.failed_proxies.add(proxy)
+            if proxy in self.proxy_stats:
+                self.proxy_stats[proxy]['failures'] += 1
+
+    def mark_proxy_success(self, proxy: str):
+        """Mark a proxy request as successful"""
+        if proxy and proxy in self.proxy_stats:
+            self.proxy_stats[proxy]['success'] += 1
+            self.failed_proxies.discard(proxy)
+
+    async def close_all(self):
+        """Close all sessions"""
+        for session in self.sessions.values():
+            if not session.closed:
+                await session.close()
+        self.sessions.clear()
+
+class ProductTracker:
+    def __init__(self, ttl: int = 3600):
+        self.seen_products = {}
+        self.ttl = ttl
+        self.stock_changes = deque(maxlen=1000)  # Track recent stock changes
+
+    def is_new_or_changed(self, identifier: str, current_stock: int) -> bool:
+        """Check if product is new or stock has changed"""
+        current_time = time.time()
+
+        # Clean expired entries
+        self.seen_products = {k: v for k, v in self.seen_products.items() 
+                            if current_time - v['timestamp'] <= self.ttl}
+
+        if identifier not in self.seen_products:
+            self.seen_products[identifier] = {
+                'timestamp': current_time,
+                'stock': current_stock
+            }
+            return True
+
+        previous = self.seen_products[identifier]
+        if previous['stock'] != current_stock:
+            # Track stock change
+            self.stock_changes.append({
+                'identifier': identifier,
+                'previous': previous['stock'],
+                'current': current_stock,
+                'timestamp': current_time
+            })
+            previous['stock'] = current_stock
+            previous['timestamp'] = current_time
+            return True
+
+        return False
+
+class ShopifyMonitor:
+    def __init__(self, rate_limit: float = 0.5, proxy_list: Optional[List[str]] = None):
+        self.rate_limit = rate_limit
+        self.session_manager = SessionManager(proxy_list)
+        self.product_tracker = ProductTracker()
+        self.store_stats = {}
+        self.last_request_times: Dict[str, float] = {}
+        self.request_windows: Dict[str, deque] = {}
+        self.max_requests_per_window = 25
+        self.window_size = 30  # 30 second window
+        self.failed_stores = {}  # Store URL -> {last_failure: timestamp, failures: count, backoff: seconds}
+        self.dns_cache = {}
+        self.dns_cache_ttl = 300  # 5 minutes TTL for DNS cache
+
+    def _init_store_stats(self, store_url: str):
+        """Initialize store statistics"""
+        if store_url not in self.store_stats:
+            self.store_stats[store_url] = {
+                'total_requests': 0,
+                'successful_requests': 0,
+                'failed_requests': 0,
+                'last_success': None,
+                'last_failure': None,
+                'recent_errors': deque(maxlen=100)
+            }
+
+    async def _wait_for_rate_limit(self, store_url: str):
+        """Advanced rate limiting with sliding window"""
+        current_time = time.time()
+
+        # Initialize request window if needed
+        if store_url not in self.request_windows:
+            self.request_windows[store_url] = deque()
+
+        window = self.request_windows[store_url]
+
+        # Remove old requests from window
+        while window and window[0] < current_time - self.window_size:
+            window.popleft()
+
+        # Wait if too many requests in window
+        if len(window) >= self.max_requests_per_window:
+            wait_time = window[0] + self.window_size - current_time
+            if wait_time > 0:
+                logger.debug(f"Rate limit wait for {store_url}: {wait_time:.2f}s")
+                await asyncio.sleep(wait_time)
+
+        # Add current request to window
+        window.append(current_time)
+
+    async def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
+        """Fetch and process products from a store"""
+        self._init_store_stats(store_url)
+        stats = self.store_stats[store_url]
+        stats['total_requests'] +=1
+
+        # Check if we should skip this store due to recent failures
+        if not self._should_retry_store(store_url):
+            return []
+
+        # Validate domain before making request
+        if not self._validate_domain(store_url):
+            self._update_store_failure(store_url)
+            log_scraping_error(store_url, Exception("DNS resolution failed"), {
+                'store_stats': stats,
+                'failed_stores': self.failed_stores
+            })
+            return []
+
+        try:
+            await self._wait_for_rate_limit(store_url)
+            session = await self.session_manager.get_session(store_url)
+
+            async with session.get(f"{store_url}/products.json", ssl=False) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                self.session_manager.mark_proxy_success(session.proxy)
+                stats['successful_requests'] += 1
+                stats['last_success'] = time.time()
+
+                matching_products = []
+                lowercase_keywords = [k.lower() for k in keywords]
+
+                for product in data.get('products', []):
+                    try:
+                        if any(k in product['title'].lower() for k in lowercase_keywords):
+                            processed = await self._process_product(store_url, product)
+                            if processed:
+                                identifier = f"{store_url}-{product['id']}"
+                                if self.product_tracker.is_new_or_changed(
+                                    identifier, 
+                                    processed.get('stock', 0)
+                                ):
+                                    matching_products.append(processed)
+                    except Exception as e:
+                        log_scraping_error(store_url, e, {
+                            'product': product.get('title', 'Unknown'),
+                            'error_location': 'product_processing'
+                        })
+
+                return matching_products
+
+        except aiohttp.ClientError as e:
+            stats['failed_requests'] += 1
+            stats['last_failure'] = time.time()
+            stats['recent_errors'].append({
+                'error': str(e),
+                'timestamp': time.time()
+            })
+
+            if session:
+                self.session_manager.mark_proxy_failed(session.proxy)
+
+            log_scraping_error(store_url, e, {
+                'stats': stats,
+                'proxy': session.proxy if session else None
+            })
+            return []
+
+    async def _process_product(self, store_url: str, product: Dict) -> Optional[Dict]:
+        """Process raw product data into structured format"""
+        try:
+            variants = product.get('variants', [])
+            sizes = {}
+            variant_ids = {}
+            total_stock = 0
+
+            for variant in variants:
+                if variant.get('available'):
+                    size = str(variant.get('title'))
+                    inventory = variant.get('inventory_quantity', 1)
+                    total_stock += inventory
+                    sizes[size] = inventory
+                    variant_ids[size] = str(variant.get('id', ''))
+
+            return {
+                'title': product['title'],
+                'url': f"{store_url}/products/{product['handle']}",
+                'price': variants[0].get('price') if variants else 'N/A',
+                'image_url': product.get('images', [{}])[0].get('src', ''),
+                'stock': total_stock,
+                'sizes': sizes,
+                'variants': variant_ids,
+                'full_size_run': 'Bot 1 FSR' if total_stock > 0 else 'OOS'
+            }
+
+        except Exception as e:
+            log_scraping_error(store_url, e, {
+                'product': product.get('title', 'Unknown'),
+                'error_location': '_process_product'
+            })
+            return None
+
+    async def close(self):
+        """Cleanup resources"""
+        await self.session_manager.close_all()
+
+    def _validate_domain(self, url: str, max_retries: int = 3) -> bool:
+        """Validate domain accessibility with DNS lookup, caching and retries"""
+        try:
+            parsed = urlparse(url)
+            domain = parsed.netloc
+
+            # Check DNS cache first
+            cache_entry = self.dns_cache.get(domain)
+            current_time = time.time()
+
+            if cache_entry and current_time - cache_entry['timestamp'] < self.dns_cache_ttl:
+                return cache_entry['valid']
+
+            # Try DNS resolution with retries
+            for attempt in range(max_retries):
+                try:
+                    socket.gethostbyname(domain)
+                    self.dns_cache[domain] = {'valid': True, 'timestamp': current_time}
+                    return True
+                except socket.gaierror as e:
+                    if attempt == max_retries - 1:
+                        logger.error(f"DNS resolution failed for {url} after {max_retries} attempts: {e}")
+                        self.dns_cache[domain] = {'valid': False, 'timestamp': current_time}
+                        return False
+                    time.sleep(1 * (attempt + 1))  # Exponential backoff
+
+        except Exception as e:
+            logger.error(f"Domain validation error for {url}: {e}")
+            return False
+
+    def _should_retry_store(self, store_url: str) -> bool:
+        """Determine if we should retry a failed store based on exponential backoff"""
+        if store_url not in self.failed_stores:
+            return True
+
+        store_data = self.failed_stores[store_url]
+        current_time = time.time()
+        time_since_failure = current_time - store_data['last_failure']
+
+        if time_since_failure >= store_data['backoff']:
+            return True
+
+        logger.info(f"Skipping {store_url} - Cooling down for {store_data['backoff'] - time_since_failure:.1f}s")
+        return False
+
+    def _update_store_failure(self, store_url: str):
+        """Update failure statistics for a store"""
+        current_time = time.time()
+        if store_url not in self.failed_stores:
+            self.failed_stores[store_url] = {
+                'failures': 1,
+                'last_failure': current_time,
+                'backoff': 60  # Start with 1 minute backoff
+            }
+        else:
+            store_data = self.failed_stores[store_url]
+            store_data['failures'] += 1
+            store_data['last_failure'] = current_time
+            # Exponential backoff with max of 1 hour
+            store_data['backoff'] = min(3600, store_data['backoff'] * 2)
+
+    def get_product_variants(self, product_url):
+        """Fetch specific product variants from a Shopify product URL"""
+        try:
+            # Convert product URL to JSON endpoint
+            if not product_url.endswith('.json'):
+                if product_url.endswith('/'):
+                    product_url = product_url[:-1]
+                product_url = product_url + '.json'
+
+            # Fetch product data with retry logic
+            max_retries = 3
+            product_data = None  # Initialize product_data
+
+            for attempt in range(max_retries):
+                try:
+                    with self.rate_limiter:
+                        response = self.session.get(product_url, timeout=10)
+                        response.raise_for_status()
+                        response_data = response.json()
+                        product_data = response_data.get('product', {})
+                        if product_data:  # Only break if we got valid data
+                            break
+                        logger.warning(f"Empty product data received for {product_url}")
+                except requests.exceptions.RequestException as e:
+                    log_scraping_error(product_url, e, {
+                        'attempt': attempt + 1,
+                        'max_retries': max_retries
+                    })
+                    if attempt == max_retries - 1:
+                        logger.error(f"Failed to fetch product data after {max_retries} attempts")
+                        return {'variants': []}
+                    time.sleep(1 * (attempt + 1))
+
+            if not product_data:
+                logger.warning(f"No valid product data found for {product_url}")
+                return {'variants': []}
+
+            # Extract variant information
+            variants = []
+            for variant in product_data.get('variants', []):
+                variants.append({
+                    'id': variant.get('id'),
+                    'title': variant.get('title'),
+                    'price': variant.get('price'),
+                    'inventory_quantity': variant.get('inventory_quantity', 0),
+                    'available': variant.get('available', False)
+                })
+
+            return {
+                'product_title': product_data.get('title'),
+                'product_handle': product_data.get('handle'),
+                'variants': variants
+            }
+
+        except Exception as e:
+            log_scraping_error(product_url, e)
+            return {'variants': []}
 
 class RateLimiter:
     def __init__(self, rate_limit):
@@ -88,267 +463,20 @@ class RetryWithProxy(Retry):
         new_retry.current_proxy_index = self.current_proxy_index
         return new_retry
 
-class ShopifyMonitor:
-    def __init__(self, rate_limit=0.5, proxy_list=None):
-        self.session = requests.Session()
+async def main():
+    # Example usage: Replace with your actual store URLs, keywords, and proxy list
+    store_urls = ["https://example-store-1.myshopify.com", "https://example-store-2.myshopify.com"]
+    keywords = ["tshirt", "jacket"]
+    proxy_list = ["http://your_proxy_1:port", "http://your_proxy_2:port"] #Replace with your proxy list
 
-        # Configure retry strategy with proxy rotation
-        retry_strategy = RetryWithProxy(
-            total=3,
-            backoff_factor=0.5,
-            status_forcelist=[500, 502, 503, 504],
-            proxy_list=proxy_list or []
-        )
+    monitor = ShopifyMonitor(rate_limit=1, proxy_list=proxy_list)
+    async with monitor:
+        tasks = [monitor.fetch_products(url, keywords) for url in store_urls]
+        results = await asyncio.gather(*tasks)
+        print(results)
+        #Further processing of the results
+        # Example:  Save to a database, send to webhook
 
-        # Configure connection pooling
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=100,
-            pool_maxsize=100
-        )
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
 
-        self.session.headers.update({
-            'User-Agent': USER_AGENT,
-            'Accept': 'application/json',
-            'Connection': 'keep-alive',
-            'Accept-Encoding': 'gzip, deflate'
-        })
-
-        self.rate_limiter = RateLimiter(rate_limit)
-        self.failed_stores = {}  # Store URL -> {last_failure: timestamp, failures: count, backoff: seconds}
-        self.store_stats = {}
-        self.dns_cache = {}
-        self.dns_cache_ttl = 300  # 5 minutes TTL for DNS cache
-
-    def _validate_domain(self, url: str, max_retries: int = 3) -> bool:
-        """Validate domain accessibility with DNS lookup, caching and retries"""
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc
-
-            # Check DNS cache first
-            cache_entry = self.dns_cache.get(domain)
-            current_time = time.time()
-
-            if cache_entry and current_time - cache_entry['timestamp'] < self.dns_cache_ttl:
-                return cache_entry['valid']
-
-            # Try DNS resolution with retries
-            for attempt in range(max_retries):
-                try:
-                    socket.gethostbyname(domain)
-                    self.dns_cache[domain] = {'valid': True, 'timestamp': current_time}
-                    return True
-                except socket.gaierror as e:
-                    if attempt == max_retries - 1:
-                        logger.error(f"DNS resolution failed for {url} after {max_retries} attempts: {e}")
-                        self.dns_cache[domain] = {'valid': False, 'timestamp': current_time}
-                        return False
-                    time.sleep(1 * (attempt + 1))  # Exponential backoff
-
-        except Exception as e:
-            logger.error(f"Domain validation error for {url}: {e}")
-            return False
-
-    def _should_retry_store(self, store_url: str) -> bool:
-        """Determine if we should retry a failed store based on exponential backoff"""
-        if store_url not in self.failed_stores:
-            return True
-
-        store_data = self.failed_stores[store_url]
-        current_time = time.time()
-        time_since_failure = current_time - store_data['last_failure']
-
-        if time_since_failure >= store_data['backoff']:
-            return True
-
-        logger.info(f"Skipping {store_url} - Cooling down for {store_data['backoff'] - time_since_failure:.1f}s")
-        return False
-
-    def _update_store_failure(self, store_url: str):
-        """Update failure statistics for a store"""
-        current_time = time.time()
-        if store_url not in self.failed_stores:
-            self.failed_stores[store_url] = {
-                'failures': 1,
-                'last_failure': current_time,
-                'backoff': 60  # Start with 1 minute backoff
-            }
-        else:
-            store_data = self.failed_stores[store_url]
-            store_data['failures'] += 1
-            store_data['last_failure'] = current_time
-            # Exponential backoff with max of 1 hour
-            store_data['backoff'] = min(3600, store_data['backoff'] * 2)
-
-    def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """Fetches products from a Shopify store with improved error handling"""
-        if store_url not in self.store_stats:
-            self._init_store_stats(store_url)
-
-        stats = self.store_stats[store_url]
-        stats['total_requests'] += 1
-
-        # Check if we should skip this store due to recent failures
-        if not self._should_retry_store(store_url):
-            return []
-
-        # Validate domain before making request
-        if not self._validate_domain(store_url):
-            self._update_store_failure(store_url)
-            log_scraping_error(store_url, Exception("DNS resolution failed"), {
-                'store_stats': stats,
-                'failed_stores': self.failed_stores
-            })
-            return []
-
-        try:
-            # Use a smaller initial limit for faster responses
-            initial_limit = 50
-            products_url = f"{store_url}/products.json?limit={initial_limit}"
-
-            with self.rate_limiter:
-                response = self.session.get(
-                    products_url,
-                    timeout=10,
-                    headers={'Cache-Control': 'no-cache'}
-                )
-                response.raise_for_status()
-                data = response.json()
-
-            # Reset failure data on success
-            if store_url in self.failed_stores:
-                del self.failed_stores[store_url]
-                logger.info(f"Store {store_url} recovered from failure state")
-
-            # Process matching products
-            matching_products = []
-            lowercase_keywords = [kw.lower() for kw in keywords]
-
-            for product in data.get("products", []):
-                try:
-                    if any(keyword in product["title"].lower() for keyword in lowercase_keywords):
-                        processed_product = self._process_product(store_url, product)
-                        if processed_product:
-                            matching_products.append(processed_product)
-                except Exception as e:
-                    log_scraping_error(store_url, e, {
-                        'product_title': product.get('title', 'Unknown'),
-                        'error_location': 'product_processing'
-                    })
-
-            stats['last_success'] = time.time()
-            return matching_products
-
-        except RequestException as e:
-            self._update_store_failure(store_url)
-            log_scraping_error(store_url, e, {
-                'store_stats': stats,
-                'failed_stores': self.failed_stores,
-                'rate_limiter_stats': {
-                    'total_requests': self.rate_limiter.total_requests,
-                    'failed_requests': self.rate_limiter.failed_requests,
-                    'backoff_multiplier': self.rate_limiter.backoff_multiplier
-                }
-            })
-            return []
-
-    def _process_product(self, store_url: str, product: Dict) -> Optional[Dict]:
-        """Process raw product data into formatted structure"""
-        try:
-            variants = product.get("variants", [])
-            sizes = {}
-            variant_ids = {}
-
-            for variant in variants:
-                if variant.get("available"):
-                    size = str(variant.get("title"))
-                    inventory = variant.get("inventory_quantity", 1)
-                    sizes[size] = inventory
-                    variant_ids[size] = str(variant.get("id", ""))
-
-            return {
-                "title": product["title"],
-                "url": f"{store_url}/products/{product['handle']}",
-                "price": variants[0].get("price") if variants else "N/A",
-                "image_url": product.get("images", [{}])[0].get("src", ""),
-                "sizes": sizes,
-                "variants": variant_ids,
-                "full_size_run": "Bot 1 FSR" if bool(sizes) else "OOS"
-            }
-        except Exception as e:
-            log_scraping_error(store_url, e, {
-                'product_title': product.get('title', 'Unknown'),
-                'error_location': '_process_product'
-            })
-            return None
-
-    def _init_store_stats(self, store_url: str):
-        """Initialize or reset statistics for a store"""
-        self.store_stats[store_url] = {
-            'total_requests': 0,
-            'failed_requests': 0,
-            'last_success': None,
-            'last_failure': None,
-            'errors': {}
-        }
-
-    def get_product_variants(self, product_url):
-        """Fetch specific product variants from a Shopify product URL"""
-        try:
-            # Convert product URL to JSON endpoint
-            if not product_url.endswith('.json'):
-                if product_url.endswith('/'):
-                    product_url = product_url[:-1]
-                product_url = product_url + '.json'
-
-            # Fetch product data with retry logic
-            max_retries = 3
-            product_data = None  # Initialize product_data
-
-            for attempt in range(max_retries):
-                try:
-                    with self.rate_limiter:
-                        response = self.session.get(product_url, timeout=10)
-                        response.raise_for_status()
-                        response_data = response.json()
-                        product_data = response_data.get('product', {})
-                        if product_data:  # Only break if we got valid data
-                            break
-                        logger.warning(f"Empty product data received for {product_url}")
-                except requests.exceptions.RequestException as e:
-                    log_scraping_error(product_url, e, {
-                        'attempt': attempt + 1,
-                        'max_retries': max_retries
-                    })
-                    if attempt == max_retries - 1:
-                        logger.error(f"Failed to fetch product data after {max_retries} attempts")
-                        return {'variants': []}
-                    time.sleep(1 * (attempt + 1))
-
-            if not product_data:
-                logger.warning(f"No valid product data found for {product_url}")
-                return {'variants': []}
-
-            # Extract variant information
-            variants = []
-            for variant in product_data.get('variants', []):
-                variants.append({
-                    'id': variant.get('id'),
-                    'title': variant.get('title'),
-                    'price': variant.get('price'),
-                    'inventory_quantity': variant.get('inventory_quantity', 0),
-                    'available': variant.get('available', False)
-                })
-
-            return {
-                'product_title': product_data.get('title'),
-                'product_handle': product_data.get('handle'),
-                'variants': variants
-            }
-
-        except Exception as e:
-            log_scraping_error(product_url, e)
-            return {'variants': []}
+if __name__ == "__main__":
+    asyncio.run(main())
