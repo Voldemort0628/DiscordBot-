@@ -26,7 +26,14 @@
                         <a class="nav-link" href="{{ url_for('manage_keywords') }}">Keywords</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('manage_config') }}">Configuration</a>
+                        <a class="nav-link" href="{{ url_for('manage_config') }}">
+                            <i class="fas fa-cogs me-2"></i>Configuration
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('variant_scraper') }}">
+                            <i class="fas fa-tag me-2"></i>Variant Scraper
+                        </a>
                     </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">

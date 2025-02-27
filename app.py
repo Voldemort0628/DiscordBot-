@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig
-from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm
+from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm
 from discord_webhook import DiscordWebhook
 import subprocess
 import psutil
@@ -249,6 +249,39 @@ def create_app():
 
         form.discord_webhook_url.data = current_user.discord_webhook_url
         return render_template('config.html', form=form)
+
+    @app.route('/variants', methods=['GET', 'POST'])
+    @login_required
+    def variant_scraper():
+        form = VariantScraperForm()
+        variants = None
+        cart_url = None
+        
+        if form.validate_on_submit():
+            try:
+                from shopify_monitor import ShopifyMonitor
+                monitor = ShopifyMonitor()
+                product_url = form.product_url.data
+                
+                if not product_url.startswith('http'):
+                    product_url = 'https://' + product_url
+                
+                # Extract domain for cart URL
+                from urllib.parse import urlparse
+                parsed_url = urlparse(product_url)
+                cart_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                
+                # Get variants
+                variants_data = monitor.get_product_variants(product_url)
+                variants = variants_data.get('variants', [])
+                
+                if not variants:
+                    flash('No variants found or error accessing product data', 'warning')
+            except Exception as e:
+                flash(f'Error scraping variants: {str(e)}', 'error')
+                print(f"Error in variant scraper: {e}")
+        
+        return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
 
     @app.route('/toggle_monitor', methods=['POST'])
     @login_required

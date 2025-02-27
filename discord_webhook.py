@@ -5,6 +5,74 @@ from datetime import datetime
 from config import INFO_COLOR
 import random
 
+class DiscordWebhook:
+    def __init__(self, webhook_url):
+        self.webhook_url = webhook_url
+        
+    def send_product_notification(self, product):
+        """Simple webhook sender - fallback implementation"""
+        try:
+            # Create webhook content
+            embed = {
+                "title": product["title"],
+                "url": product["url"],
+                "color": INFO_COLOR,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            
+            if product.get("image_url"):
+                embed["thumbnail"] = {"url": product["image_url"]}
+            
+            embed["fields"] = [
+                {
+                    "name": "Price",
+                    "value": f"${product['price']}" if isinstance(product['price'], (int, float)) else product['price'],
+                    "inline": True
+                }
+            ]
+
+            if "retailer" in product:
+                embed["fields"].append({
+                    "name": "Retailer",
+                    "value": product["retailer"],
+                    "inline": True
+                })
+
+            if product.get("sizes"):
+                sizes_text = []
+                for size, qty in product["sizes"].items():
+                    base_url = product["url"]
+                    variant_id = product["variants"].get(size, "")
+                    size_text = f"• {size} | QT [{qty}]"
+                    if variant_id:
+                        cart_url = f"{base_url}?variant={variant_id}"
+                        size_text = f"[{size_text}]({cart_url})"
+                    sizes_text.append(size_text)
+
+                embed["fields"].append({
+                    "name": "Sizes / Stock",
+                    "value": "\n".join(sizes_text),
+                    "inline": False
+                })
+
+            payload = {
+                "username": "SoleAddictionsLLC Monitor",
+                "avatar_url": "https://cdn.shopify.com/shopifycloud/brochure/assets/brand-assets/shopify-logo-primary-logo-456baa801ee66a0a435671082365958316831c9960c480451dd0330bcdae304f.svg",
+                "embeds": [embed]
+            }
+
+            response = requests.post(
+                self.webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=3
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            print(f"Error sending Discord webhook: {e}")
+            return False
+
 class RateLimitedDiscordWebhook:
     def __init__(self, webhook_url):
         self.webhook_url = webhook_url

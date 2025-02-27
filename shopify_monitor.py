@@ -5,17 +5,70 @@ from typing import Dict, List
 import random
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 
+class RateLimiter:
+    def __init__(self, rate_limit):
+        self.rate_limit = rate_limit
+        self.last_request_time = 0
+
+    def __enter__(self):
+        current_time = time.time()
+        time_passed = current_time - self.last_request_time
+        if time_passed < 1 / self.rate_limit:
+            time.sleep(1 / self.rate_limit - time_passed)
+        self.last_request_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 class ShopifyMonitor:
-    def __init__(self, rate_limit: float = SHOPIFY_RATE_LIMIT):
+    def __init__(self, rate_limit=0.5):
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json"
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
-        self.last_request_time = 0
+        self.rate_limiter = RateLimiter(rate_limit)
         self.failed_stores = set()
-        self.retry_counts = {}
-        self.rate_limit = rate_limit
+
+    def get_product_variants(self, product_url):
+        """Fetch specific product variants from a Shopify product URL"""
+        try:
+            # Convert product URL to JSON endpoint
+            if not product_url.endswith('.json'):
+                if product_url.endswith('/'):
+                    product_url = product_url[:-1]
+                product_url = product_url + '.json'
+
+            # Fetch product data
+            with self.rate_limiter:
+                response = self.session.get(product_url, timeout=10)
+                response.raise_for_status()
+                product_data = response.json().get('product', {})
+
+            if not product_data:
+                return {'variants': []}
+
+            # Extract variant information
+            variants = []
+            for variant in product_data.get('variants', []):
+                variants.append({
+                    'id': variant.get('id'),
+                    'title': variant.get('title'),
+                    'price': variant.get('price'),
+                    'inventory_quantity': variant.get('inventory_quantity', 0),
+                    'available': variant.get('available', False)
+                })
+
+            return {
+                'product_title': product_data.get('title'),
+                'product_handle': product_data.get('handle'),
+                'variants': variants
+            }
+
+        except Exception as e:
+            print(f"Error fetching variants from {product_url}: {e}")
+            return {'variants': []}
 
     def _rate_limit(self):
         """Implements rate limiting for Shopify requests with jitter"""
@@ -45,7 +98,7 @@ class ShopifyMonitor:
             # Use a smaller initial limit for faster responses
             initial_limit = 50
             products_url = f"{store_url}/products.json?limit={initial_limit}"
-            
+
             # Use shorter timeout for faster error detection
             response = self.session.get(
                 products_url, 
@@ -59,7 +112,7 @@ class ShopifyMonitor:
 
             data = response.json()
             matching_products = []
-            
+
             # Optimize keyword matching with pre-computed lowercase
             lowercase_keywords = [kw.lower() for kw in keywords]
 
@@ -69,19 +122,19 @@ class ShopifyMonitor:
                     processed_product = self._process_product(store_url, product)
                     if processed_product:
                         matching_products.append(processed_product)
-            
+
             # If we got max products and didn't find any matches,
             # fetch more products only if necessary
             product_count = len(data.get("products", []))
             if product_count >= initial_limit and not matching_products and MAX_PRODUCTS > initial_limit:
                 # Get more products in a second request
                 products_url = f"{store_url}/products.json?limit={MAX_PRODUCTS}&page=2"
-                
+
                 try:
                     response = self.session.get(products_url, timeout=8)
                     response.raise_for_status()
                     more_data = response.json()
-                    
+
                     for product in more_data.get("products", []):
                         product_title_lower = product["title"].lower()
                         if any(keyword in product_title_lower for keyword in lowercase_keywords):
