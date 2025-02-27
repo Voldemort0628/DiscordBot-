@@ -105,6 +105,7 @@ def manage_keywords():
                 flash('You already have this keyword added.')
                 return redirect(url_for('manage_keywords'))
 
+            # Create new keyword
             keyword = Keyword(
                 word=form.word.data,
                 enabled=form.enabled.data,
@@ -113,10 +114,12 @@ def manage_keywords():
             db.session.add(keyword)
             db.session.commit()
             flash('Keyword added successfully')
+
         except Exception as e:
             db.session.rollback()
             flash('Error adding keyword. Please try again.')
             print(f"Keyword creation error: {e}")
+
         return redirect(url_for('manage_keywords'))
 
     # Show only user's keywords
@@ -377,23 +380,38 @@ def register():
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
+            # Start a database transaction
+            db.session.begin_nested()
+
             # Create the new user
             user = User(username=form.username.data)
             user.set_password(form.password.data)
             db.session.add(user)
-            db.session.commit()  # Commit to get the user.id
+            db.session.flush()  # This will assign the user.id
 
             # Add default stores for the new user
             from stores import SHOPIFY_STORES
             for store_url in SHOPIFY_STORES:
-                store = Store(url=store_url, enabled=True, user_id=user.id)
+                store = Store(
+                    url=store_url, 
+                    enabled=True, 
+                    user_id=user.id
+                )
                 db.session.add(store)
 
             # Add default keywords for the new user
             from stores import DEFAULT_KEYWORDS
             for word in DEFAULT_KEYWORDS:
-                keyword = Keyword(word=word, enabled=True, user_id=user.id)
-                db.session.add(keyword)
+                try:
+                    keyword = Keyword(
+                        word=word, 
+                        enabled=True, 
+                        user_id=user.id
+                    )
+                    db.session.add(keyword)
+                except Exception as e:
+                    print(f"Error adding default keyword {word}: {e}")
+                    continue
 
             # Create default configuration
             config = MonitorConfig(
