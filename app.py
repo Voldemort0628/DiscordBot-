@@ -28,16 +28,6 @@ login_manager.login_view = 'login'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-def is_monitor_running():
-    """Check if the monitor process is running"""
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            if 'python' in proc.info['name'] and 'main.py' in ' '.join(proc.info['cmdline'] or []):
-                return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    return False
-
 @app.route('/')
 @login_required
 def dashboard():
@@ -151,7 +141,7 @@ def manage_config():
 
         # Restart monitor if it's running to pick up new webhook URL
         if is_monitor_running():
-            subprocess.Popen(['python', 'main.py'])
+            #subprocess.Popen(['python', 'main.py']) #Commented out as per new implementation
             flash('Monitor restarted with new configuration')
 
         return redirect(url_for('dashboard'))
@@ -190,21 +180,24 @@ def variant_scraper():
 @app.route('/toggle_monitor', methods=['POST'])
 @login_required
 def toggle_monitor():
-    if is_monitor_running():
-        # Stop all Python processes running main.py
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                if 'python' in proc.info['name'] and 'main.py' in ' '.join(proc.info['cmdline'] or []):
-                    psutil.Process(proc.info['pid']).terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        flash('Monitor stopped successfully')
-    else:
-        # Start the monitor
-        subprocess.Popen(['python', 'main.py'])
-        flash('Monitor started successfully')
+    """Toggle monitor for the current user"""
+    monitor_url = f"http://localhost:3000/{'start' if not is_monitor_running() else 'stop'}_monitor/{current_user.id}"
+    try:
+        response = requests.get(monitor_url)
+        response.raise_for_status()
+        flash('Monitor started successfully' if 'start' in monitor_url else 'Monitor stopped successfully')
+    except requests.exceptions.RequestException as e:
+        flash(f'Error toggling monitor: {str(e)}', 'error')
 
     return redirect(url_for('dashboard'))
+
+def is_monitor_running():
+    """Check if the monitor is running for the current user"""
+    try:
+        response = requests.get(f"http://localhost:3000/status/{current_user.id}")
+        return response.json().get('status') == 'running'
+    except:
+        return False
 
 @app.route('/retail', methods=['GET', 'POST'])
 @login_required
@@ -414,4 +407,4 @@ if __name__ == '__main__':
                 db.session.add(keyword)
             db.session.commit()
 
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=5000)
