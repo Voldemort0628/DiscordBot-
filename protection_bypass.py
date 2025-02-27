@@ -7,6 +7,7 @@ import base64
 from typing import Dict, Optional
 from datetime import datetime
 import logging
+import cloudscraper
 
 class ProtectionBypass:
     def __init__(self):
@@ -14,7 +15,7 @@ class ProtectionBypass:
         self.init_time = int(time.time() * 1000)
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
@@ -29,8 +30,8 @@ class ProtectionBypass:
             'X-Requested-With': 'XMLHttpRequest'
         }
         self.cookies = {}
-        self.client_version = "1.5.0" #retained from original
-        self.scraper = cloudscraper.create_scraper( #retained from original
+        self.client_version = "1.5.0"
+        self.scraper = cloudscraper.create_scraper(
             browser={
                 'browser': 'chrome',
                 'platform': 'windows',
@@ -39,47 +40,14 @@ class ProtectionBypass:
         )
 
     def get_shopify_headers(self, store_url: str) -> Dict:
-        """Get headers for Shopify with anti-bot measures"""
-        timestamp = int(time.time() * 1000)
-
-        # Basic client info
-        client_info = {
-            "userAgent": self.headers['User-Agent'],
-            "language": "en-US",
-            "colorDepth": 24,
-            "deviceMemory": 8,
-            "hardwareConcurrency": 12,
-            "screenResolution": [1920, 1080],
-            "availableScreenResolution": [1920, 1040],
-            "timezoneOffset": -300,
-            "timezone": "America/New_York",
-            "sessionStorage": True,
-            "localStorage": True,
-            "indexedDb": True,
-            "cpuClass": "unknown",
-            "platform": "Win32",
-            "plugins": [
-                ["Chrome PDF Plugin", "Portable Document Format"],
-                ["Chrome PDF Viewer", ""],
-                ["Native Client", ""]
-            ]
-        }
-
-        # Generate client-specific token
-        client_token = base64.b64encode(
-            hashlib.sha256(json.dumps(client_info).encode()).digest()
-        ).decode()
-
+        """Get headers for Shopify API requests"""
         headers = self.headers.copy()
         headers.update({
             'Origin': store_url,
             'Referer': store_url,
-            'X-Shop-Client': client_token,
-            'X-Shop-Time': str(timestamp),
-            'X-Shop-Visit-Id': self.session_id,
             'X-Shopify-Storefront-Access-Token': 'public',
+            'X-Request-Start': str(int(time.time() * 1000))
         })
-
         return headers
 
     def get_cookies(self, store_url: str) -> Dict:
@@ -88,40 +56,50 @@ class ProtectionBypass:
         cookies = {
             '_s': self.session_id,
             '_shopify_s': self.session_id,
-            '_shopify_y': str(timestamp - 86400),  # 24h ago
+            '_shopify_y': str(timestamp - 86400),
             '_y': str(timestamp - 86400),
             'cart_currency': 'USD',
             'cart_ts': str(timestamp),
             'cart_ver': '2',
-            'localization': 'US',
+            'localization': 'US'
         }
         return cookies
 
     async def verify_store(self, session: aiohttp.ClientSession, store_url: str) -> bool:
         """Verify store accessibility and determine protection level"""
         try:
-            # Initial request to check response and collect cookies
-            async with session.get(store_url, timeout=10) as response:
+            headers = self.get_shopify_headers(store_url)
+            cookies = self.get_cookies(store_url)
+
+            async with session.get(
+                store_url,
+                headers=headers,
+                cookies=cookies,
+                timeout=10,
+                ssl=False
+            ) as response:
                 if response.status != 200:
                     return False
 
-                # Store any cookies returned
-                for cookie in response.cookies:
-                    self.cookies[cookie.key] = cookie.value
+                # Update cookies from response
+                for cookie_name, cookie_morsel in response.cookies.items():
+                    self.cookies[cookie_name] = cookie_morsel.value
 
                 # Check response headers for protection indicators
-                headers = response.headers
-                is_protected = any([
-                    'cloudflare' in headers.get('server', '').lower(),
-                    'akamai' in str(headers).lower(),
-                    'incap' in str(headers).lower(),
-                    '_cfduid' in str(response.cookies)
-                ])
+                response_headers = response.headers
+                protection_indicators = [
+                    ('server', 'cloudflare'),
+                    ('server', 'akamai'),
+                    ('x-cdn', 'Incapsula'),
+                    ('x-iinfo', '')  # Incapsula info header
+                ]
 
-                if is_protected:
-                    # Add protection-specific headers and cookies
-                    self.headers.update(self.get_shopify_headers(store_url))
-                    self.cookies.update(self.get_cookies(store_url))
+                for header, value in protection_indicators:
+                    if value in response_headers.get(header, '').lower():
+                        # Store needs protection bypass
+                        self.headers.update(self.get_shopify_headers(store_url))
+                        self.cookies.update(self.get_cookies(store_url))
+                        break
 
                 return True
 
@@ -132,10 +110,11 @@ class ProtectionBypass:
     def get_request_params(self, store_url: str) -> Dict:
         """Get all necessary request parameters for a store"""
         return {
-            'headers': self.headers,
+            'headers': self.get_shopify_headers(store_url),
             'cookies': self.cookies,
             'timeout': aiohttp.ClientTimeout(total=30),
-            'ssl': False
+            'ssl': False,
+            'allow_redirects': True
         }
 
 
@@ -303,5 +282,3 @@ class ProtectionBypass:
             return self.get_bestbuy_headers()
         else:
             return {}
-
-import cloudscraper #Import needed for original code

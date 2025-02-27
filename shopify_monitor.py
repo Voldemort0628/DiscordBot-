@@ -235,13 +235,13 @@ class ShopifyMonitor:
     async def get_store_products(self, store_url: str, retries: int = 3) -> Optional[List[Dict]]:
         """Fetch products from store with retries and error handling"""
         await self.setup()
+        domain = urlparse(store_url).netloc
 
         # Verify store first
         if not await self.verify_store(store_url):
             logger.error(f"Failed to verify store {store_url}")
             return None
 
-        domain = urlparse(store_url).netloc
         api_url = self._get_api_url(store_url)
 
         for attempt in range(retries):
@@ -276,42 +276,28 @@ class ShopifyMonitor:
                             self.proxy_manager.release_proxy(proxy, False, str(response.status))
                         continue
 
-                    # Validate JSON response
-                    try:
-                        data = await response.json()
-                    except ValueError:
-                        logger.error(f"Invalid JSON from {store_url}")
-                        self.rate_limiter.mark_failure(domain, 'json')
-                        if proxy:
-                            self.proxy_manager.release_proxy(proxy, False, 'json')
-                        continue
-
                     # Success
                     self.rate_limiter.mark_success(domain)
                     if proxy:
                         self.proxy_manager.release_proxy(proxy, True)
-                    return data.get('products', [])
 
-            except asyncio.TimeoutError:
-                logger.warning(f"Timeout on {store_url}")
-                self.rate_limiter.mark_failure(domain, 'timeout')
-                if proxy:
-                    self.proxy_manager.release_proxy(proxy, False, 'timeout')
-
-            except ClientError as e:
-                logger.error(f"Connection error on {store_url}: {e}")
-                self.rate_limiter.mark_failure(domain, 'connection')
-                if proxy:
-                    self.proxy_manager.release_proxy(proxy, False, 'connection')
+                    try:
+                        data = await response.json()
+                        return data.get('products', [])
+                    except ValueError as e:
+                        logger.error(f"Invalid JSON from {store_url}: {e}")
+                        self.rate_limiter.mark_failure(domain, 'json')
+                        continue
 
             except Exception as e:
-                logger.error(f"Error fetching {store_url}: {e}")
+                logger.error(f"Error fetching {store_url} (attempt {attempt + 1}): {e}")
                 self.rate_limiter.mark_failure(domain, 'unknown')
                 if proxy:
                     self.proxy_manager.release_proxy(proxy, False, 'unknown')
 
-            # Wait before retry
-            await asyncio.sleep(2 ** attempt)
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                continue
 
         return None
 
@@ -322,7 +308,7 @@ class ShopifyMonitor:
             if not variants:
                 return None
 
-            # Calculate availability and stock
+            # Calculate availability and stock levels
             total_stock = 0
             sizes = {}
             for variant in variants:
