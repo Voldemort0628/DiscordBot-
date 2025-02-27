@@ -5,7 +5,7 @@ from typing import List, Dict, Set
 import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
-from flask import Flask, redirect
+from flask import Flask, jsonify
 from models import db, Store, Keyword, MonitorConfig, User
 
 app = Flask(__name__)
@@ -35,7 +35,7 @@ class UserMonitor:
                 monitor = ShopifyMonitor(rate_limit=config.rate_limit)
                 webhook = DiscordWebhook(webhook_url=config.discord_webhook_url)
 
-                print(f"\nStarting monitor for user {self.user_id}")
+                print(f"Starting monitor for user {self.user_id}")
                 print(f"Configuration: rate_limit={config.rate_limit}, delay={config.monitor_delay}")
 
                 while self.running:
@@ -76,21 +76,20 @@ def start_monitor(user_id):
     print(f"Received start monitor request for user {user_id}")
 
     with app.app_context():
-        # Verify user exists and has configuration
         config = MonitorConfig.query.filter_by(user_id=user_id).first()
         if not config:
             print(f"No configuration found for user {user_id}")
-            return {"status": "error", "message": "No configuration found"}, 400
+            return jsonify({"status": "error", "message": "No configuration found"}), 400
 
     if user_id in user_monitors:
         print(f"Monitor already running for user {user_id}")
-        return {"status": "already_running"}
+        return jsonify({"status": "already_running"})
 
     monitor = UserMonitor(user_id)
     user_monitors[user_id] = monitor
     asyncio.create_task(monitor.run_monitor())
     print(f"Started monitor for user {user_id}")
-    return {"status": "started"}
+    return jsonify({"status": "started"})
 
 @app.route('/stop_monitor/<int:user_id>')
 def stop_monitor(user_id):
@@ -100,8 +99,8 @@ def stop_monitor(user_id):
         user_monitors[user_id].running = False
         del user_monitors[user_id]
         print(f"Stopped monitor for user {user_id}")
-        return {"status": "stopped"}
-    return {"status": "not_running"}
+        return jsonify({"status": "stopped"})
+    return jsonify({"status": "not_running"})
 
 @app.route('/status/<int:user_id>')
 def status(user_id):
@@ -113,33 +112,19 @@ def status(user_id):
         "active_monitors": len(user_monitors)
     }
     print(f"Status check for user {user_id}: {status_info}")
-    return status_info
+    return jsonify(status_info)
 
 @app.route('/')
 def home():
     """Homepage that shows the monitor status"""
-    return {
+    return jsonify({
         "status": "running",
         "active_monitors": len(user_monitors)
-    }
-
-@app.route('/dashboard')
-def redirect_to_dashboard():
-    """Redirect to the main dashboard app"""
-    # Redirect to the web dashboard - use the default port (80) for the main app
-    dashboard_url = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
-    return redirect(dashboard_url)
-
-@app.route('/status')
-def status_all():
-    """Return overall monitor status"""
-    return {
-        "status": "running",
-        "active_monitors": len(user_monitors)
-    }
+    })
 
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
 
+    # ALWAYS serve the app on port 3000
     app.run(host='0.0.0.0', port=3000)

@@ -22,9 +22,9 @@ login_manager.login_view = 'login'
 
 REPLIT_DOMAIN = os.environ.get('REPL_ID', None)
 if REPLIT_DOMAIN:
-    # Use the same domain for both services, just different ports
+    # In production, use subdomain routing without explicit ports
     BASE_URL = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
-    MONITOR_SERVICE_URL = f"{BASE_URL}:3000"
+    MONITOR_SERVICE_URL = f"{BASE_URL}"
 else:
     MONITOR_SERVICE_URL = "http://localhost:3000"  # Local development fallback
 
@@ -35,9 +35,13 @@ def load_user(user_id):
 def is_monitor_running():
     """Check if the monitor is running for the current user"""
     try:
-        response = requests.get(f"{MONITOR_SERVICE_URL}/status/{current_user.id}")
-        print(f"Checking monitor status at: {MONITOR_SERVICE_URL}/status/{current_user.id}")
-        return response.json().get('status') == 'running'
+        status_url = f"{MONITOR_SERVICE_URL}/status/{current_user.id}"
+        print(f"Checking monitor status at: {status_url}")
+        response = requests.get(status_url, timeout=10)
+        if response.status_code == 200:
+            return response.json().get('status') == 'running'
+        print(f"Status check failed with code: {response.status_code}")
+        return False
     except Exception as e:
         print(f"Error checking monitor status: {e}")
         return False
@@ -48,14 +52,16 @@ def toggle_monitor():
     """Toggle monitor for the current user"""
     action = 'start' if not is_monitor_running() else 'stop'
     monitor_url = f"{MONITOR_SERVICE_URL}/{action}_monitor/{current_user.id}"
+
     try:
         print(f"Sending request to: {monitor_url}")
-        response = requests.get(monitor_url)
+        response = requests.get(monitor_url, timeout=10)
         response.raise_for_status()
         flash(f'Monitor {action}ed successfully')
     except requests.exceptions.RequestException as e:
-        flash(f'Error toggling monitor: {str(e)}', 'error')
-        print(f"Monitor toggle error: {e}")
+        error_msg = f"Monitor toggle error: {str(e)}"
+        print(error_msg)
+        flash(error_msg, 'error')
 
     return redirect(url_for('dashboard'))
 
