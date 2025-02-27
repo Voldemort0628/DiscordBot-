@@ -29,8 +29,8 @@
                             </span>
                         </td>
                         <td>
-                            <form method="POST" action="{{ url_for('manage_keywords') }}" style="display: inline;">
-                                {{ form.hidden_tag() }}
+                            <form method="POST" style="display: inline;">
+                                {{ form.csrf_token }}
                                 <input type="hidden" name="keyword_id" value="{{ keyword.id }}">
                                 <button type="submit" name="action" value="toggle" class="btn btn-sm btn-warning">
                                     {{ "Disable" if keyword.enabled else "Enable" }}
@@ -58,7 +58,7 @@
             </div>
             <div class="modal-body">
                 <form method="POST">
-                    {{ form.hidden_tag() }}
+                    {{ form.csrf_token }}
                     <div class="mb-3">
                         {{ form.word.label(class="form-label") }}
                         {{ form.word(class="form-control") }}

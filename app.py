@@ -12,6 +12,7 @@ from datetime import datetime
 from discord_webhook import DiscordWebhook
 import subprocess
 import psutil
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -93,16 +94,50 @@ def manage_stores():
 @login_required
 def manage_keywords():
     form = KeywordForm()
-    if form.validate_on_submit():
+
+    # Handle keyword actions (toggle/delete)
+    if request.method == 'POST' and 'action' in request.form:
         try:
-            # Check if user already has this keyword
+            keyword_id = request.form.get('keyword_id')
+            if not keyword_id:
+                flash('Invalid keyword ID', 'error')
+                return redirect(url_for('manage_keywords'))
+
+            keyword = Keyword.query.get_or_404(keyword_id)
+
+            # Verify ownership
+            if keyword.user_id != current_user.id:
+                flash('Access denied', 'error')
+                return redirect(url_for('manage_keywords'))
+
+            action = request.form['action']
+            if action == 'toggle':
+                keyword.enabled = not keyword.enabled
+                db.session.commit()
+                flash(f"Keyword {'enabled' if keyword.enabled else 'disabled'}")
+            elif action == 'delete':
+                db.session.delete(keyword)
+                db.session.commit()
+                flash('Keyword deleted')
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error processing keyword action: {e}")
+            flash('Error processing keyword action. Please try again.', 'error')
+
+        return redirect(url_for('manage_keywords'))
+
+    # Handle new keyword creation
+    elif form.validate_on_submit():
+        try:
+            # Check for duplicate
             existing = Keyword.query.filter_by(
                 word=form.word.data,
                 user_id=current_user.id
             ).first()
 
             if existing:
-                flash('You already have this keyword added.')
+                flash('This keyword already exists in your list.')
                 return redirect(url_for('manage_keywords'))
 
             # Create new keyword
@@ -117,10 +152,8 @@ def manage_keywords():
 
         except Exception as e:
             db.session.rollback()
-            flash('Error adding keyword. Please try again.')
-            print(f"Keyword creation error: {e}")
-
-        return redirect(url_for('manage_keywords'))
+            print(f"Error adding keyword: {e}")
+            flash('Error adding keyword. Please try again.', 'error')
 
     # Show only user's keywords
     keywords = Keyword.query.filter_by(user_id=current_user.id).all()
@@ -187,21 +220,43 @@ def variant_scraper():
 @app.route('/toggle_monitor', methods=['POST'])
 @login_required
 def toggle_monitor():
-    if is_monitor_running():
-        # Stop all Python processes running main.py
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                if 'python' in proc.info['name'] and 'main.py' in ' '.join(proc.info['cmdline'] or []):
-                    psutil.Process(proc.info['pid']).terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        flash('Monitor stopped successfully')
-    else:
-        # Start the monitor
-        subprocess.Popen(['python', 'main.py'])
-        flash('Monitor started successfully')
+    try:
+        # Get all Python processes running main.py
+        monitor_processes = [
+            proc for proc in psutil.process_iter(['pid', 'name', 'cmdline'])
+            if 'python' in proc.info['name'] and 'main.py' in ' '.join(proc.info['cmdline'] or [])
+        ]
 
-    return redirect(url_for('dashboard'))
+        if monitor_processes:
+            # Stop all monitor processes
+            for proc in monitor_processes:
+                try:
+                    process = psutil.Process(proc.info['pid'])
+                    process.terminate()
+                    process.wait(timeout=5)  # Wait for process to terminate
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired) as e:
+                    print(f"Error terminating process {proc.info['pid']}: {e}")
+            flash('Monitor stopped successfully')
+        else:
+            # Start the monitor with current environment
+            env = os.environ.copy()
+            # Ensure user's webhook URL is available to the monitor
+            if current_user.discord_webhook_url:
+                env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
+
+            subprocess.Popen(['python', 'main.py'], env=env)
+            time.sleep(2)  # Give process time to start
+
+            if is_monitor_running():
+                flash('Monitor started successfully')
+            else:
+                flash('Failed to start monitor. Check logs for details.', 'error')
+
+        return redirect(url_for('dashboard'))
+    except Exception as e:
+        print(f"Error in toggle_monitor: {e}")
+        flash(f'Error toggling monitor: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
 
 @app.route('/retail', methods=['GET', 'POST'])
 @login_required

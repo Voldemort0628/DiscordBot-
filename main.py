@@ -14,6 +14,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
+# Make seen_products user-specific
+user_seen_products: Dict[int, Set[str]] = {}
+
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
                        webhook: DiscordWebhook, seen_products: Set[str], user_id: int):
     """Monitors a single store for products"""
@@ -41,9 +44,13 @@ async def main():
             # Get all active users
             active_users = User.query.filter_by(enabled=True).all()
 
-            # Initialize shared monitor
-            monitor = ShopifyMonitor(rate_limit=1.0)  # Use default rate limit
-            seen_products = set()
+            # Initialize monitors per user
+            monitors = {user.id: ShopifyMonitor(rate_limit=1.0) for user in active_users}
+
+            # Initialize seen products per user
+            for user in active_users:
+                if user.id not in user_seen_products:
+                    user_seen_products[user.id] = set()
 
             print(f"Starting monitor for {len(active_users)} active users")
 
@@ -68,7 +75,14 @@ async def main():
                     tasks = []
                     for store_url in active_stores:
                         task = asyncio.create_task(
-                            monitor_store(store_url, active_keywords, monitor, webhook, seen_products, user.id)
+                            monitor_store(
+                                store_url, 
+                                active_keywords, 
+                                monitors[user.id], 
+                                webhook, 
+                                user_seen_products[user.id],
+                                user.id
+                            )
                         )
                         tasks.append(task)
 
@@ -76,8 +90,8 @@ async def main():
                     total_new_products = sum(r for r in results if isinstance(r, int))
 
                     print(f"- New products found: {total_new_products}")
-                    if monitor.failed_stores:
-                        print("- Failed stores:", ", ".join(monitor.failed_stores))
+                    if monitors[user.id].failed_stores:
+                        print("- Failed stores:", ", ".join(monitors[user.id].failed_stores))
 
                 # Use the shortest monitor delay among all users
                 min_delay = min(
