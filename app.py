@@ -260,7 +260,8 @@ def create_app():
         if form.validate_on_submit():
             try:
                 from shopify_monitor import ShopifyMonitor
-                monitor = ShopifyMonitor()
+                # Use same rate limiting settings as the monitor
+                monitor = ShopifyMonitor(rate_limit=0.5)
                 product_url = form.product_url.data
 
                 # Input validation
@@ -276,6 +277,9 @@ def create_app():
                 from urllib.parse import urlparse
                 parsed_url = urlparse(product_url)
                 cart_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                
+                # Log the attempt for debugging
+                app.logger.info(f"Scraping variants for {product_url}")
 
                 # Get variants
                 variants_data = monitor.get_product_variants(product_url)
