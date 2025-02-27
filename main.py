@@ -72,7 +72,12 @@ async def main():
                     print(f"Error: No configuration found for user {user_id}")
                     sys.exit(1)
 
-                monitor = ShopifyMonitor(rate_limit=config.rate_limit)
+                # Make sure rate_limit is properly passed to ShopifyMonitor
+                rate_limit_value = config.rate_limit if hasattr(config, 'rate_limit') else 0.5
+                monitor = ShopifyMonitor(rate_limit=rate_limit_value)
+                
+                # Verify the monitor was initialized correctly
+                print(f"[User {user_id}] Monitor initialized with rate_limit={rate_limit_value}")
 
                 # Initialize user's seen products - use TTL cache to prevent memory growth
                 if user_id not in user_seen_products:
