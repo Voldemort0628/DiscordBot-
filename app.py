@@ -1,10 +1,10 @@
 import asyncio
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, Store, Keyword, MonitorConfig, RetailScraper, Proxy # Added Proxy model
-from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm, ProxyForm, ProxyImportForm # Added Proxy forms
+from models import db, User, Store, Keyword, MonitorConfig, RetailScraper, Proxy
+from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm, ProxyForm, ProxyImportForm
 from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
-from retail_scraper import RetailScraper as RetailScraperUtil
+from scrapers.target_scraper import TargetScraper  # Import the new Target scraper
 import os
 import json
 import requests
@@ -143,7 +143,6 @@ def variant_scraper():
     return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
 
 
-
 @app.route('/toggle_monitor', methods=['POST'])
 @login_required
 def toggle_monitor():
@@ -168,7 +167,7 @@ def toggle_monitor():
 def retail_scraper():
     form = RetailScraperForm()
     results = []
-    webhook = DiscordWebhook()  # Initialize Discord webhook
+    webhook = DiscordWebhook()
 
     if form.validate_on_submit():
         scraper = RetailScraper(
@@ -197,48 +196,36 @@ def retail_scraper():
                 db.session.commit()
                 flash('Scraper deleted')
             elif action == 'scrape_now':
-                # Create retail scraper instance
-                retail_scraper = RetailScraperUtil()
-                results = []
-
                 try:
                     if scraper.retailer == 'target':
-                        results = retail_scraper.scrape_target(scraper.keyword)
-                    elif scraper.retailer == 'walmart':
-                        # Run Walmart scraper asynchronously
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        results = loop.run_until_complete(retail_scraper.scrape_walmart(scraper.keyword))
-                        loop.close()
-                    elif scraper.retailer == 'bestbuy':
-                        results = retail_scraper.scrape_bestbuy(scraper.keyword)
+                        # Use the new Target scraper
+                        target_scraper = TargetScraper()
+                        results = target_scraper.search_products(scraper.keyword)
 
-                    # Send results to Discord
-                    for result in results:
-                        product_data = {
-                            'title': result.title,
-                            'price': result.price,
-                            'url': result.url,
-                            'image_url': result.image_url,
-                            'retailer': result.retailer.title()
-                        }
-                        webhook.send_product_notification(product_data)
+                        # Send results to Discord
+                        for result in results:
+                            product_data = {
+                                'title': result.title,
+                                'price': result.price,
+                                'url': result.url,
+                                'image_url': result.image_url,
+                                'retailer': result.retailer.title()
+                            }
+                            webhook.send_product_notification(product_data)
 
-                    scraper.last_check = datetime.utcnow()
-                    db.session.commit()
-                    flash(f'Scrape completed - Found {len(results)} items')
+                        scraper.last_check = datetime.utcnow()
+                        db.session.commit()
+                        flash(f'Target scrape completed - Found {len(results)} items')
+                    else:
+                        flash(f'Scraping for {scraper.retailer} is not yet implemented')
 
                 except Exception as e:
                     error_msg = str(e)
                     print(f"Scraping error: {error_msg}")  # Log the error
                     flash(f'Error during scraping: {error_msg}', 'error')
-                finally:
-                    if hasattr(retail_scraper, 'cleanup'):
-                        retail_scraper.cleanup()
 
     scrapers = RetailScraper.query.all()
     return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)
-
 
 @app.route('/proxies', methods=['GET', 'POST'])
 @login_required
