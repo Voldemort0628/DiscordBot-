@@ -10,48 +10,36 @@ import logging
 import socket
 from urllib.parse import urlparse
 from requests.exceptions import RequestException
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 from logger_config import scraper_logger, log_scraping_error
+from proxy_manager import ProxyManager
 
 logger = scraper_logger
 
-class SessionManager:
-    def __init__(self, proxy_list: Optional[List[str]] = None):
-        self.proxy_list = proxy_list or []
-        self.sessions: Dict[str, aiohttp.ClientSession] = {}
+class ProxyManager:
+    def __init__(self):
+        self.proxies: List[str] = []
         self.failed_proxies: Set[str] = set()
         self.proxy_stats: Dict[str, Dict] = {}
+        self.current_proxy_index = 0
 
-    async def get_session(self, store_url: str) -> aiohttp.ClientSession:
-        """Get or create a session for a store with proxy rotation"""
-        if store_url not in self.sessions or self.sessions[store_url].closed:
-            proxy = self._get_next_proxy()
-            timeout = aiohttp.ClientTimeout(total=10, connect=5)
-            self.sessions[store_url] = aiohttp.ClientSession(
-                timeout=timeout,
-                headers={
-                    'User-Agent': USER_AGENT,
-                    'Accept': 'application/json',
-                    'Accept-Encoding': 'gzip, deflate',
-                },
-                proxy=proxy
-            )
-        return self.sessions[store_url]
 
-    def _get_next_proxy(self) -> Optional[str]:
+    def add_proxies_from_list(self, proxy_list: List[str]):
+        self.proxies.extend(proxy_list)
+
+    def get_next_proxy(self) -> Optional[str]:
         """Get next working proxy with stats tracking"""
-        if not self.proxy_list:
+        if not self.proxies:
             return None
 
-        working_proxies = [p for p in self.proxy_list if p not in self.failed_proxies]
+        working_proxies = [p for p in self.proxies if p not in self.failed_proxies]
         if not working_proxies:
             # Reset failed proxies if all are failed
             self.failed_proxies.clear()
-            working_proxies = self.proxy_list
+            working_proxies = self.proxies
 
-        proxy = random.choice(working_proxies)
+        proxy = working_proxies[self.current_proxy_index]
+        self.current_proxy_index = (self.current_proxy_index + 1) % len(working_proxies)
         if proxy not in self.proxy_stats:
             self.proxy_stats[proxy] = {'success': 0, 'failures': 0}
         return proxy
@@ -68,6 +56,47 @@ class SessionManager:
         if proxy and proxy in self.proxy_stats:
             self.proxy_stats[proxy]['success'] += 1
             self.failed_proxies.discard(proxy)
+
+    def get_stats(self):
+        return self.proxy_stats
+
+
+class SessionManager:
+    def __init__(self, proxy_manager: Optional['ProxyManager'] = None):
+        self.proxy_manager = proxy_manager
+        self.sessions: Dict[str, aiohttp.ClientSession] = {}
+        self._proxy_url: Optional[str] = None
+
+    async def get_session(self, store_url: str) -> aiohttp.ClientSession:
+        """Get or create a session for a store with proxy rotation"""
+        if store_url not in self.sessions or self.sessions[store_url].closed:
+            if self.proxy_manager:
+                self._proxy_url = self.proxy_manager.get_next_proxy()
+
+            timeout = aiohttp.ClientTimeout(total=10, connect=5)
+            connector = aiohttp.TCPConnector(ssl=False)
+
+            self.sessions[store_url] = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers={
+                    'User-Agent': USER_AGENT,
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                },
+                proxy=self._proxy_url
+            )
+        return self.sessions[store_url]
+
+    def mark_proxy_failed(self):
+        """Mark current proxy as failed"""
+        if self.proxy_manager and self._proxy_url:
+            self.proxy_manager.mark_proxy_failed(self._proxy_url)
+
+    def mark_proxy_success(self):
+        """Mark current proxy as successful"""
+        if self.proxy_manager and self._proxy_url:
+            self.proxy_manager.mark_proxy_success(self._proxy_url)
 
     async def close_all(self):
         """Close all sessions"""
@@ -87,7 +116,7 @@ class ProductTracker:
         current_time = time.time()
 
         # Clean expired entries
-        self.seen_products = {k: v for k, v in self.seen_products.items() 
+        self.seen_products = {k: v for k, v in self.seen_products.items()
                             if current_time - v['timestamp'] <= self.ttl}
 
         if identifier not in self.seen_products:
@@ -115,7 +144,10 @@ class ProductTracker:
 class ShopifyMonitor:
     def __init__(self, rate_limit: float = 0.5, proxy_list: Optional[List[str]] = None):
         self.rate_limit = rate_limit
-        self.session_manager = SessionManager(proxy_list)
+        self.proxy_manager = ProxyManager()
+        if proxy_list:
+            self.proxy_manager.add_proxies_from_list(proxy_list)
+        self.session_manager = SessionManager(self.proxy_manager)
         self.product_tracker = ProductTracker()
         self.store_stats = {}
         self.last_request_times: Dict[str, float] = {}
@@ -166,7 +198,7 @@ class ShopifyMonitor:
         """Fetch and process products from a store"""
         self._init_store_stats(store_url)
         stats = self.store_stats[store_url]
-        stats['total_requests'] +=1
+        stats['total_requests'] += 1
 
         # Check if we should skip this store due to recent failures
         if not self._should_retry_store(store_url):
@@ -185,11 +217,11 @@ class ShopifyMonitor:
             await self._wait_for_rate_limit(store_url)
             session = await self.session_manager.get_session(store_url)
 
-            async with session.get(f"{store_url}/products.json", ssl=False) as response:
+            async with session.get(f"{store_url}/products.json") as response:
                 response.raise_for_status()
                 data = await response.json()
 
-                self.session_manager.mark_proxy_success(session.proxy)
+                self.session_manager.mark_proxy_success()
                 stats['successful_requests'] += 1
                 stats['last_success'] = time.time()
 
@@ -223,12 +255,10 @@ class ShopifyMonitor:
                 'timestamp': time.time()
             })
 
-            if session:
-                self.session_manager.mark_proxy_failed(session.proxy)
-
+            self.session_manager.mark_proxy_failed()
             log_scraping_error(store_url, e, {
                 'stats': stats,
-                'proxy': session.proxy if session else None
+                'proxy_stats': self.proxy_manager.get_stats() if self.proxy_manager else None
             })
             return []
 
