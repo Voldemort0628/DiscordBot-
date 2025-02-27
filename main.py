@@ -204,9 +204,15 @@ async def main():
                                     sys.exit(1)  # Exit with error code so the process restarts
                                 
                                 print(f"Database connection issue. Attempting to reconnect. ({db_reconnect_attempts}/{max_db_reconnect})")
-                                # Force close and recreate session
-                                db.session.close()
-                                db.session = db.create_scoped_session()
+                                # Force close and create a new session
+                                try:
+                                    db.session.close()
+                                    db.session.remove()
+                                    db.engine.dispose()
+                                    db.session = db.create_scoped_session()
+                                    print("Database session recreated successfully")
+                                except Exception as session_error:
+                                    print(f"Error recreating session: {session_error}")
                                 await asyncio.sleep(5)
                             else:
                                 # For other errors, just wait a bit

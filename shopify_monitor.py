@@ -30,6 +30,8 @@ class ShopifyMonitor:
         })
         self.rate_limiter = RateLimiter(rate_limit)
         self.failed_stores = set()
+        self.retry_counts = {}
+        self.last_request_time = time.time()
 
     def get_product_variants(self, product_url):
         """Fetch specific product variants from a Shopify product URL"""
