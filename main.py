@@ -93,5 +93,27 @@ async def main():
         print(f"Fatal error: {e}")
         sys.exit(1)
 
+@app.route('/')
+def home():
+    """Homepage that shows the monitor status"""
+    return "Shopify Monitor is running. Access the dashboard at /dashboard"
+
+@app.route('/dashboard')
+def redirect_to_dashboard():
+    """Redirect to the main dashboard app"""
+    return "Visit the web dashboard to manage the monitor"
+
+@app.route('/status')
+def status():
+    """Return the monitor status"""
+    return {"status": "running", "stores_count": len(SHOPIFY_STORES), "keywords_count": len(DEFAULT_KEYWORDS)}
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Start the monitor in a background thread
+    import threading
+    monitor_thread = threading.Thread(target=lambda: asyncio.run(main()))
+    monitor_thread.daemon = True
+    monitor_thread.start()
+    
+    # Start the Flask server
+    app.run(host='0.0.0.0', port=5000)
