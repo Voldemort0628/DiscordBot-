@@ -10,15 +10,15 @@ import time
 
 def is_monitor_running(user_id):
     """Check if a specific user's monitor is running"""
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             cmdline = ' '.join(proc.info['cmdline'] or [])
             if ('python' in proc.info['name'] and 
                 'main.py' in cmdline and 
                 f"MONITOR_USER_ID={user_id}" in cmdline):
                 return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
     return False
 
 def create_app():
@@ -31,8 +31,6 @@ def create_app():
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,
         'pool_recycle': 300,
-        'pool_size': 10,
-        'max_overflow': 20
     }
 
     # Initialize Flask extensions
@@ -45,9 +43,10 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    @app.before_first_request
-    def initialize_database():
+    # Initialize database within app context
+    with app.app_context():
         db.create_all()
+        # Create admin user if no users exist
         if not User.query.first():
             admin = User(username='admin')
             admin.set_password('admin')
@@ -61,7 +60,6 @@ def create_app():
         keywords = Keyword.query.filter_by(user_id=current_user.id).all()
         config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
         monitor_running = is_monitor_running(current_user.id)
-
         return render_template('dashboard.html', 
                              stores=stores, 
                              keywords=keywords, 
@@ -197,7 +195,6 @@ def create_app():
             db.session.commit()
             flash('Configuration updated successfully')
 
-            # Restart monitor if it's running
             if is_monitor_running(current_user.id):
                 subprocess.Popen(['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"])
                 flash('Monitor restarted with new configuration')
@@ -230,26 +227,27 @@ def create_app():
                             f"MONITOR_USER_ID={current_user.id}" in cmdline):
                             process = psutil.Process(proc.info['pid'])
                             process.terminate()
-                            process.wait(timeout=3)  # Wait for graceful shutdown
+                            try:
+                                process.wait(timeout=3)
+                            except psutil.TimeoutExpired:
+                                process.kill()
                             flash('Monitor stopped successfully')
                             break
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired) as e:
-                        print(f"Error terminating process for user {current_user.id}: {e}")
-                        # If timeout, force kill
-                        try:
-                            process.kill()
-                        except:
-                            pass
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
             else:
                 # Start a new monitor process for this user
                 env = os.environ.copy()
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
 
-                # Use command line argument for better process identification
-                cmd = ['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"]
-                subprocess.Popen(cmd, env=env, start_new_session=True)  # Run in new session
-                time.sleep(1)  # Brief pause to allow process to start
+                # Use start_new_session to ensure the monitor runs independently
+                subprocess.Popen(
+                    ['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"],
+                    env=env,
+                    start_new_session=True
+                )
 
+                time.sleep(1)  # Brief pause to allow process to start
                 if is_monitor_running(current_user.id):
                     flash('Monitor started successfully')
                 else:
