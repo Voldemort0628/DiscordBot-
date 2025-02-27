@@ -1,132 +1,97 @@
-import os
 import asyncio
 import sys
-from typing import Dict, Set
+import os
+from typing import List, Dict, Set
 import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
-from flask import Flask, jsonify
-from models import db, Store, Keyword, MonitorConfig, User
+from config import MONITOR_DELAY
+from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
+from flask import Flask
+from models import db, Store, Keyword, MonitorConfig
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
-# Global dictionary to track user monitors
-user_monitors = {}
+async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
+                       webhook: DiscordWebhook, seen_products: Set[str]):
+    """Monitors a single store for products"""
+    try:
+        products = monitor.fetch_products(store_url, keywords)
+        new_products = 0
 
-class UserMonitor:
-    def __init__(self, user_id: int):
-        self.user_id = user_id
-        self.seen_products = set()
-        self.running = True
+        for product in products:
+            product_identifier = f"{store_url}-{product['title']}-{product['price']}"
 
-    async def run_monitor(self):
-        """Main monitoring loop for a single user"""
-        try:
-            with app.app_context():
-                config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
-                if not config:
-                    print(f"No configuration found for user {self.user_id}")
-                    self.running = False
-                    return
+            if product_identifier not in seen_products:
+                print(f"New product found on {store_url}: {product['title']}")
+                webhook.send_product_notification(product)
+                seen_products.add(product_identifier)
+                new_products += 1
 
-                monitor = ShopifyMonitor(rate_limit=config.rate_limit)
-                webhook = DiscordWebhook(webhook_url=config.discord_webhook_url)
+        return new_products
+    except Exception as e:
+        print(f"Error monitoring {store_url}: {e}")
+        return 0
 
-                print(f"Starting monitor for user {self.user_id}")
-                print(f"Configuration: rate_limit={config.rate_limit}, delay={config.monitor_delay}")
+async def main():
+    try:
+        with app.app_context():
+            # Get configuration from database
+            config = MonitorConfig.query.first()
+            if not config:
+                config = MonitorConfig()
+                db.session.add(config)
+                db.session.commit()
 
-                while self.running:
-                    try:
-                        stores = Store.query.filter_by(enabled=True, added_by=self.user_id).all()
-                        keywords = Keyword.query.filter_by(enabled=True, added_by=self.user_id).all()
+            # Initialize monitor and webhook with configuration
+            monitor = ShopifyMonitor(rate_limit=config.rate_limit)
+            webhook = DiscordWebhook(webhook_url=config.discord_webhook_url)
+            seen_products = set()
 
-                        if not stores or not keywords:
-                            print(f"No active stores or keywords for user {self.user_id}")
-                            await asyncio.sleep(config.monitor_delay)
-                            continue
+            print("Starting monitor with configuration:")
+            print(f"- Rate limit: {config.rate_limit} req/s")
+            print(f"- Monitor delay: {config.monitor_delay} seconds")
+            print(f"- Max products: {config.max_products}")
+            print(f"- Discord webhook: {'Configured' if config.discord_webhook_url else 'Not configured'}")
+            print("\nPress Ctrl+C to stop monitoring\n")
 
-                        print(f"User {self.user_id} monitoring {len(stores)} stores")
-                        print(f"Active stores: {[store.url for store in stores]}")
-                        print(f"Active keywords: {[k.word for k in keywords]}")
+            while True:
+                # Get active stores and keywords from database
+                active_stores = [store.url for store in Store.query.filter_by(enabled=True).all()]
+                active_keywords = [kw.word for kw in Keyword.query.filter_by(enabled=True).all()]
 
-                        for store in stores:
-                            try:
-                                products = monitor.fetch_products(store.url, [k.word for k in keywords])
-                                for product in products:
-                                    product_id = f"{store.url}-{product['title']}-{product['price']}"
-                                    if product_id not in self.seen_products:
-                                        webhook.send_product_notification(product)
-                                        self.seen_products.add(product_id)
-                            except Exception as e:
-                                print(f"Error monitoring store {store.url}: {e}")
+                print(f"Starting monitor for {len(active_stores)} stores")
+                print(f"Monitoring for keywords: {', '.join(active_keywords)}")
 
-                        await asyncio.sleep(config.monitor_delay)
-                    except Exception as e:
-                        print(f"Error in monitoring cycle for user {self.user_id}: {e}")
-                        await asyncio.sleep(30)  # Wait before retrying
+                tasks = []
+                for store_url in active_stores:
+                    task = asyncio.create_task(
+                        monitor_store(store_url, active_keywords, monitor, webhook, seen_products)
+                    )
+                    tasks.append(task)
 
-        except Exception as e:
-            print(f"Fatal error in monitor for user {self.user_id}: {e}")
-            self.running = False
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                total_new_products = sum(r for r in results if isinstance(r, int))
 
-@app.route('/start_monitor/<int:user_id>')
-def start_monitor(user_id):
-    """Start a new monitor instance for a user"""
-    print(f"Received start monitor request for user {user_id}")
+                print(f"\nCompleted monitoring cycle:")
+                print(f"- New products found: {total_new_products}")
+                print(f"- Stores with issues: {len(monitor.failed_stores)}")
+                if monitor.failed_stores:
+                    print("- Failed stores:", ", ".join(monitor.failed_stores))
+                print(f"- Total products tracked: {len(seen_products)}")
+                print(f"- Active stores: {len(active_stores)}")
 
-    with app.app_context():
-        config = MonitorConfig.query.filter_by(user_id=user_id).first()
-        if not config:
-            print(f"No configuration found for user {user_id}")
-            return jsonify({"status": "error", "message": "No configuration found"}), 400
+                await asyncio.sleep(config.monitor_delay)
 
-    if user_id in user_monitors and user_monitors[user_id].running:
-        print(f"Monitor already running for user {user_id}")
-        return jsonify({"status": "already_running"})
-
-    monitor = UserMonitor(user_id)
-    user_monitors[user_id] = monitor
-    asyncio.create_task(monitor.run_monitor())
-    print(f"Started monitor for user {user_id}")
-    return jsonify({"status": "started"})
-
-@app.route('/stop_monitor/<int:user_id>')
-def stop_monitor(user_id):
-    """Stop the monitor instance for a user"""
-    print(f"Received stop monitor request for user {user_id}")
-    if user_id in user_monitors:
-        user_monitors[user_id].running = False
-        del user_monitors[user_id]
-        print(f"Stopped monitor for user {user_id}")
-        return jsonify({"status": "stopped"})
-    return jsonify({"status": "not_running"})
-
-@app.route('/status/<int:user_id>')
-def status(user_id):
-    """Check if monitor is running for a specific user"""
-    is_running = user_id in user_monitors and user_monitors[user_id].running
-    status_info = {
-        "status": "running" if is_running else "stopped",
-        "user_id": user_id,
-        "active_monitors": len(user_monitors)
-    }
-    print(f"Status check for user {user_id}: {status_info}")
-    return jsonify(status_info)
-
-@app.route('/')
-def home():
-    """Homepage showing monitor service status"""
-    return jsonify({
-        "status": "running",
-        "active_monitors": len(user_monitors)
-    })
+    except KeyboardInterrupt:
+        print("\nMonitoring stopped by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Fatal error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-
-    print("Starting monitor service on port 3000...")
-    app.run(host='0.0.0.0', port=3000)
+    asyncio.run(main())
