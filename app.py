@@ -8,6 +8,9 @@ import os
 import json
 import requests
 from datetime import datetime
+from discord_webhook import DiscordWebhook
+import subprocess
+import psutil
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -24,13 +27,28 @@ login_manager.login_view = 'login'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+def is_monitor_running():
+    """Check if the monitor process is running"""
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if 'python' in proc.info['name'] and 'main.py' in ' '.join(proc.info['cmdline'] or []):
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return False
+
 @app.route('/')
 @login_required
 def dashboard():
     stores = Store.query.all()
     keywords = Keyword.query.all()
     config = MonitorConfig.query.first()
-    return render_template('dashboard.html', stores=stores, keywords=keywords, config=config)
+    monitor_running = is_monitor_running()
+    return render_template('dashboard.html', 
+                         stores=stores, 
+                         keywords=keywords, 
+                         config=config,
+                         monitor_running=monitor_running)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -124,11 +142,31 @@ def variant_scraper():
     return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
 
 
+@app.route('/toggle_monitor', methods=['POST'])
+@login_required
+def toggle_monitor():
+    if is_monitor_running():
+        # Stop all Python processes running main.py
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if 'python' in proc.info['name'] and 'main.py' in ' '.join(proc.info['cmdline'] or []):
+                    psutil.Process(proc.info['pid']).terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        flash('Monitor stopped successfully')
+    else:
+        # Start the monitor
+        subprocess.Popen(['python', 'main.py'])
+        flash('Monitor started successfully')
+
+    return redirect(url_for('dashboard'))
+
 @app.route('/retail', methods=['GET', 'POST'])
 @login_required
 def retail_scraper():
     form = RetailScraperForm()
     results = []
+    webhook = DiscordWebhook()  # Initialize Discord webhook
 
     if form.validate_on_submit():
         scraper = RetailScraper(
@@ -159,6 +197,8 @@ def retail_scraper():
             elif action == 'scrape_now':
                 # Perform immediate scrape
                 retail_scraper = RetailScraperUtil()
+                results = []
+
                 if scraper.retailer == 'target':
                     results = retail_scraper.scrape_target(scraper.keyword)
                 elif scraper.retailer == 'walmart':
@@ -166,9 +206,20 @@ def retail_scraper():
                 elif scraper.retailer == 'bestbuy':
                     results = retail_scraper.scrape_bestbuy(scraper.keyword)
 
+                # Send results to Discord
+                for result in results:
+                    product_data = {
+                        'title': result.title,
+                        'price': result.price,
+                        'url': result.url,
+                        'image_url': result.image_url,
+                        'retailer': result.retailer.title()
+                    }
+                    webhook.send_product_notification(product_data) #Assumes DiscordWebhook has this method
+
                 scraper.last_check = datetime.utcnow()
                 db.session.commit()
-                flash('Scrape completed')
+                flash(f'Scrape completed - Found {len(results)} items')
 
     scrapers = RetailScraper.query.all()
     return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)

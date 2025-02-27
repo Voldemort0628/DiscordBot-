@@ -33,29 +33,27 @@ class DiscordWebhook:
             "fields": [
                 {
                     "name": "Price",
-                    "value": f"{product_data['price']} USD",
-                    "inline": True
-                },
-                {
-                    "name": "Stock",
-                    "value": str(product_data.get("stock", "N/A")),
-                    "inline": True
-                },
-                {
-                    "name": "Full Size Run",
-                    "value": product_data.get("full_size_run", "N/A"),
+                    "value": f"${product_data['price']}" if isinstance(product_data['price'], (int, float)) else product_data['price'],
                     "inline": True
                 }
             ]
         }
 
-        # Add sizes if available
+        # Add retailer field if present (for retail scraper results)
+        if "retailer" in product_data:
+            embed["fields"].append({
+                "name": "Retailer",
+                "value": product_data["retailer"],
+                "inline": True
+            })
+
+        # Add sizes if available (for Shopify products)
         if product_data.get("sizes"):
             sizes_text = []
             for size, qty in product_data["sizes"].items():
                 base_url = product_data["url"]
                 variant_id = product_data["variants"].get(size, "")
-                size_text = f"• {size} | QT [{qty}]"  # Added bullet point
+                size_text = f"• {size} | QT [{qty}]"
                 if variant_id:
                     cart_url = f"{base_url}?variant={variant_id}"
                     size_text = f"[{size_text}]({cart_url})"
@@ -67,27 +65,27 @@ class DiscordWebhook:
                 "inline": False
             })
 
-        # Add quick links with proper formatting
-        links_text = [
-            f"[Quicktask]({product_data['url']}/cart.js) | " +
-            f"[StockX](https://stockx.com/search?s={product_data['title'].replace(' ', '%20')}) | " +
-            "[Setup](javascript:void(0))",
-            "",  # Empty line for spacing
-            f"[Zephyr QT]({product_data['url']}) | SRC: {product_data.get('stock', 0)}",
-            "",  # Empty line for spacing
-            "[Link Change](javascript:void(0)) | " +
-            f"[Copy Link]({product_data['url']}) | " +
-            "[Setup ShopPay](javascript:void(0))"
-        ]
+            # Add quick links with proper formatting
+            links_text = [
+                f"[Quicktask]({product_data['url']}/cart.js) | " +
+                f"[StockX](https://stockx.com/search?s={product_data['title'].replace(' ', '%20')}) | " +
+                "[Setup](javascript:void(0))",
+                "",  # Empty line for spacing
+                f"[Zephyr QT]({product_data['url']}) | SRC: {product_data.get('stock', 0)}",
+                "",  # Empty line for spacing
+                "[Link Change](javascript:void(0)) | " +
+                f"[Copy Link]({product_data['url']}) | " +
+                "[Setup ShopPay](javascript:void(0))"
+            ]
 
-        embed["fields"].append({
-            "name": "Links",
-            "value": "\n".join(links_text),
-            "inline": False
-        })
+            embed["fields"].append({
+                "name": "Links",
+                "value": "\n".join(links_text),
+                "inline": False
+            })
 
         payload = {
-            "username": "Shopify Monitor",
+            "username": "Product Monitor",
             "avatar_url": "https://cdn.shopify.com/shopifycloud/brochure/assets/brand-assets/shopify-logo-primary-logo-456baa801ee66a0a435671082365958316831c9960c480451dd0330bcdae304f.svg",
             "embeds": [embed]
         }
