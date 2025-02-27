@@ -76,10 +76,11 @@ class ShopifyMonitor:
         """Implements rate limiting for Shopify requests with jitter"""
         current_time = time.time()
         time_passed = current_time - self.last_request_time
-        if time_passed < 1/self.rate_limit:
+        rate_limit = self.rate_limiter.rate_limit
+        if time_passed < 1/rate_limit:
             # Add random jitter between 0-0.5 seconds
             jitter = random.uniform(0, 0.5)
-            time.sleep(1/self.rate_limit - time_passed + jitter)
+            time.sleep(1/rate_limit - time_passed + jitter)
         self.last_request_time = time.time()
 
     def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
