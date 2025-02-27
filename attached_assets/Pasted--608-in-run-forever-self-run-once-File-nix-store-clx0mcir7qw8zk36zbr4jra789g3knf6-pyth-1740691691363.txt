@@ -1,0 +1,34 @@
+ 608, in run_forever
+    self._run_once()
+  File "/nix/store/clx0mcir7qw8zk36zbr4jra789g3knf6-python3-3.11.10/lib/python3.11/asyncio/base_events.py", line 1936, in _run_once
+    handle._run()
+  File "/nix/store/clx0mcir7qw8zk36zbr4jra789g3knf6-python3-3.11.10/lib/python3.11/asyncio/events.py", line 84, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/runner/workspace/shopify_monitor.py", line 178, in fetch_products
+    log_scraping_error(store_url, Exception("DNS resolution failed"), {
+  File "/home/runner/workspace/logger_config.py", line 87, in log_scraping_error
+    log_error(scraper_logger, error, extra_context)
+  File "/home/runner/workspace/logger_config.py", line 78, in log_error
+    logger.error(f"Error occurred: {str(error)}", extra=extra, exc_info=True)
+Message: 'Error occurred: DNS resolution failed'
+Arguments: ()
+2025-02-27 21:27:25,710 - scraper - ERROR - Error monitoring https://www.shoepalace.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:25,710 - scraper - ERROR - Error monitoring https://www.jimmyjazz.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:37,202 - scraper - ERROR - Error monitoring https://www.dtlr.com: 
+2025-02-27 21:27:37,202 - scraper - ERROR - Error monitoring https://www.saintalfred.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:37,203 - scraper - ERROR - Error monitoring https://www.notre-shop.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:38,554 - scraper - ERROR - Error monitoring https://www.deadstock.ca: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:38,555 - scraper - ERROR - Error monitoring https://www.bowsandarrowsberkeley.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:38,555 - scraper - ERROR - Error monitoring https://www.featuresneakerboutique.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:39,913 - scraper - ERROR - Error monitoring https://www.blendsus.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:39,914 - scraper - ERROR - Error monitoring https://www.apbstore.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:39,914 - scraper - ERROR - Error monitoring https://www.bbbranded.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:41,113 - scraper - ERROR - Error monitoring https://www.a-ma-maniere.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:41,113 - scraper - ERROR - Error monitoring https://www.socialstatuspgh.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:41,113 - scraper - ERROR - Error monitoring https://www.wishatl.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:42,523 - scraper - ERROR - Error monitoring https://www.xhibition.co: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:42,524 - scraper - ERROR - Error monitoring https://www.unknwn.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:42,524 - scraper - ERROR - Error monitoring https://www.atmosusa.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:43,685 - scraper - ERROR - Error monitoring https://www.bodega.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:43,685 - scraper - ERROR - Error monitoring https://www.unionjordan2025.com: 'ClientSession' object has no attribute 'proxy'
+2025-02-27 21:27:43,685 - scraper - ERROR - Error monitoring https://www.undefeated.com: 'ClientSession' object has no attribute 'proxy'
