@@ -1,12 +1,13 @@
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, Store, Keyword, MonitorConfig
-from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm # Added VariantScraperForm
+from models import db, User, Store, Keyword, MonitorConfig, RetailScraper
+from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm
 from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
-from shopify_monitor import ShopifyMonitor # Added ShopifyMonitor.  May need to be defined elsewhere.
+from retail_scraper import RetailScraper as RetailScraperUtil
 import os
 import json
 import requests
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -121,6 +122,56 @@ def variant_scraper():
             flash(f'Error scraping variants: {str(e)}', 'error')
 
     return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
+
+
+@app.route('/retail', methods=['GET', 'POST'])
+@login_required
+def retail_scraper():
+    form = RetailScraperForm()
+    results = []
+
+    if form.validate_on_submit():
+        scraper = RetailScraper(
+            retailer=form.retailer.data,
+            keyword=form.keyword.data,
+            check_frequency=form.check_frequency.data,
+            enabled=form.enabled.data,
+            added_by=current_user.id
+        )
+        db.session.add(scraper)
+        db.session.commit()
+        flash('Retail scraper added successfully')
+
+    elif request.method == 'POST' and 'action' in request.form:
+        scraper_id = request.form.get('scraper_id')
+        scraper = RetailScraper.query.get(scraper_id)
+
+        if scraper:
+            action = request.form['action']
+            if action == 'toggle':
+                scraper.enabled = not scraper.enabled
+                db.session.commit()
+                flash(f"Scraper {'enabled' if scraper.enabled else 'disabled'}")
+            elif action == 'delete':
+                db.session.delete(scraper)
+                db.session.commit()
+                flash('Scraper deleted')
+            elif action == 'scrape_now':
+                # Perform immediate scrape
+                retail_scraper = RetailScraperUtil()
+                if scraper.retailer == 'target':
+                    results = retail_scraper.scrape_target(scraper.keyword)
+                elif scraper.retailer == 'walmart':
+                    results = retail_scraper.scrape_walmart(scraper.keyword)
+                elif scraper.retailer == 'bestbuy':
+                    results = retail_scraper.scrape_bestbuy(scraper.keyword)
+
+                scraper.last_check = datetime.utcnow()
+                db.session.commit()
+                flash('Scrape completed')
+
+    scrapers = RetailScraper.query.all()
+    return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField
+from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField, SelectField
 from wtforms.validators import DataRequired, URL, Optional
 
 class LoginForm(FlaskForm):
@@ -26,3 +26,14 @@ class ConfigForm(FlaskForm):
 class VariantScraperForm(FlaskForm):
     product_url = StringField('Product URL', validators=[DataRequired(), URL()])
     submit = SubmitField('Scrape Variants')
+
+class RetailScraperForm(FlaskForm):
+    retailer = SelectField('Retailer', choices=[
+        ('target', 'Target'),
+        ('walmart', 'Walmart'),
+        ('bestbuy', 'Best Buy')
+    ], validators=[DataRequired()])
+    keyword = StringField('Pokemon Keyword', validators=[DataRequired()])
+    check_frequency = IntegerField('Check Frequency (seconds)', default=3600)
+    enabled = BooleanField('Enabled', default=True)
+    submit = SubmitField('Add Scraper')

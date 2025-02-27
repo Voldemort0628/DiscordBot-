@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-between mb-4">
+    <div class="col">
+        <h2>Retail Pokemon Scraper</h2>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addScraperModal">
+            Add New Scraper
+        </button>
+    </div>
+</div>
+
+{% if scrapers %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Active Scrapers</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Retailer</th>
+                        <th>Keyword</th>
+                        <th>Last Check</th>
+                        <th>Check Frequency</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for scraper in scrapers %}
+                    <tr>
+                        <td>{{ scraper.retailer.title() }}</td>
+                        <td>{{ scraper.keyword }}</td>
+                        <td>{{ scraper.last_check.strftime('%Y-%m-%d %H:%M:%S') if scraper.last_check else 'Never' }}</td>
+                        <td>{{ scraper.check_frequency }} seconds</td>
+                        <td>
+                            <span class="badge {% if scraper.enabled %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ "Active" if scraper.enabled else "Inactive" }}
+                            </span>
+                        </td>
+                        <td>
+                            <form method="POST" style="display: inline;">
+                                <input type="hidden" name="scraper_id" value="{{ scraper.id }}">
+                                <button type="submit" name="action" value="toggle" class="btn btn-sm btn-warning">
+                                    {{ "Disable" if scraper.enabled else "Enable" }}
+                                </button>
+                                <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger">
+                                    Delete
+                                </button>
+                                <button type="submit" name="action" value="scrape_now" class="btn btn-sm btn-primary">
+                                    Scrape Now
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add Scraper Modal -->
+<div class="modal fade" id="addScraperModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Retail Scraper</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.retailer.label(class="form-label") }}
+                        {{ form.retailer(class="form-select") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.keyword.label(class="form-label") }}
+                        {{ form.keyword(class="form-control") }}
+                        <div class="form-text">Enter Pokemon-related keyword (e.g., "Pokemon Cards", "Booster Box")</div>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.check_frequency.label(class="form-label") }}
+                        {{ form.check_frequency(class="form-control") }}
+                        <div class="form-text">How often to check for new products (in seconds)</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        {{ form.enabled(class="form-check-input") }}
+                        {{ form.enabled.label(class="form-check-label") }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if results %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Latest Results</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for result in results %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    {% if result.image_url %}
+                    <img src="{{ result.image_url }}" class="card-img-top" alt="{{ result.title }}">
+                    {% endif %}
+                    <div class="card-body">
+                        <h5 class="card-title">{{ result.title }}</h5>
+                        <p class="card-text">
+                            <strong>Price:</strong> ${{ result.price }}<br>
+                            <strong>Retailer:</strong> {{ result.retailer.title() }}
+                        </p>
+                        <a href="{{ result.url }}" target="_blank" class="btn btn-primary">View Product</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

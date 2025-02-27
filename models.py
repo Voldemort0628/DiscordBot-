@@ -32,3 +32,12 @@ class MonitorConfig(db.Model):
     rate_limit = db.Column(db.Float, default=1.0)  # requests per second per store
     monitor_delay = db.Column(db.Integer, default=30)  # seconds between checks
     max_products = db.Column(db.Integer, default=250)
+
+class RetailScraper(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    retailer = db.Column(db.String(50), nullable=False)  # 'target', 'walmart', 'bestbuy'
+    keyword = db.Column(db.String(100), nullable=False)
+    enabled = db.Column(db.Boolean, default=True)
+    last_check = db.Column(db.DateTime)
+    check_frequency = db.Column(db.Integer, default=3600)  # seconds between checks
+    added_by = db.Column(db.Integer, db.ForeignKey('user.id'))
