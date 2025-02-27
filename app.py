@@ -13,6 +13,22 @@ from discord_webhook import DiscordWebhook
 import subprocess
 import psutil
 import time
+import socket
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('0.0.0.0', port))
+            return False
+        except socket.error:
+            return True
+
+def get_available_port(start_port=5000, max_port=5010):
+    """Try to find an available port, starting from start_port"""
+    for port in range(start_port, max_port):
+        if not is_port_in_use(port):
+            return port
+    raise RuntimeError("No available ports found")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -507,22 +523,10 @@ if __name__ == '__main__':
         # Create default admin user if none exists
         if not User.query.first():
             admin = User(username='admin')
-            admin.set_password('admin')  # Change this in production
+            admin.set_password('admin')
             db.session.add(admin)
             db.session.commit()
 
-        # Populate default stores if none exist
-        if not Store.query.first():
-            for store_url in SHOPIFY_STORES:
-                store = Store(url=store_url, enabled=True, added_by=1, user_id=1)  # admin user id is 1
-                db.session.add(store)
-            db.session.commit()
-
-        # Populate default keywords if none exist
-        if not Keyword.query.first():
-            for word in DEFAULT_KEYWORDS:
-                keyword = Keyword(word=word, enabled=True, added_by=1, user_id=1)  # admin user id is 1
-                db.session.add(keyword)
-            db.session.commit()
-
-    app.run(host='0.0.0.0', port=5000)
+        # Find an available port
+        port = get_available_port()
+        app.run(host='0.0.0.0', port=port)
