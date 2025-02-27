@@ -102,8 +102,8 @@ def home():
 def redirect_to_dashboard():
     """Redirect to the main dashboard app"""
     from flask import redirect
-    # Redirect to the web dashboard
-    dashboard_url = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co:8080"
+    # Redirect to the web dashboard - use the default port (80) for the main app
+    dashboard_url = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
     return redirect(dashboard_url)
 
 @app.route('/status')
@@ -120,4 +120,4 @@ if __name__ == "__main__":
     
     # Start the Flask server
     # Make sure to bind to 0.0.0.0 for Replit deployment
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=3000)  # Changed port to avoid conflict with app.py
