@@ -7,23 +7,26 @@ from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
 from models import db, User, Store, Keyword, MonitorConfig
 
-# Dictionary to store seen products per user
-user_seen_products: Dict[int, Set[str]] = {}
+# Dictionary to store seen products per user with TTL
+user_seen_products: Dict[int, Dict[str, float]] = {}
+PRODUCT_TTL = 3600  # 1 hour TTL for seen products
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
-                       webhook: DiscordWebhook, seen_products: Set[str], user_id: int):
-    """Monitors a single store for products"""
+                       webhook: DiscordWebhook, seen_products: Dict[str, float], user_id: int):
+    """Monitors a single store for products with improved error handling"""
     try:
         products = monitor.fetch_products(store_url, keywords)
         new_products = 0
+        current_time = time.time()
 
         for product in products:
             product_identifier = f"{store_url}-{product['title']}-{product['price']}-{user_id}"
 
-            if product_identifier not in seen_products:
+            # Check if product was seen within TTL window
+            if product_identifier not in seen_products or (current_time - seen_products[product_identifier]) > PRODUCT_TTL:
                 print(f"[User {user_id}] New product found on {store_url}: {product['title']}")
                 webhook.send_product_notification(product)
-                seen_products.add(product_identifier)
+                seen_products[product_identifier] = current_time
                 new_products += 1
 
         return new_products
@@ -35,7 +38,7 @@ async def main():
     start_time = time.time()
     retry_count = 0
     max_retries = 3
-    
+
     while True:
         try:
             # Extract user ID from command line arguments
@@ -54,10 +57,6 @@ async def main():
 
             from app import create_app
             app = create_app()
-            
-            # Database connection management
-            db_reconnect_attempts = 0
-            max_db_reconnect = 5
 
             with app.app_context():
                 # Get the specific user
@@ -75,15 +74,10 @@ async def main():
                 # Make sure rate_limit is properly passed to ShopifyMonitor
                 rate_limit_value = config.rate_limit if hasattr(config, 'rate_limit') else 0.5
                 monitor = ShopifyMonitor(rate_limit=rate_limit_value)
-                
-                # Verify the monitor was initialized correctly
-                print(f"[User {user_id}] Monitor initialized with rate_limit={rate_limit_value}")
 
-                # Initialize user's seen products - use TTL cache to prevent memory growth
+                # Initialize user's seen products with TTL if not exists
                 if user_id not in user_seen_products:
-                    user_seen_products[user_id] = set()
-                    # Limit memory usage by periodically clearing older products
-                    # Implement periodic cleaning every 1000 cycles
+                    user_seen_products[user_id] = {}
 
                 # Initialize webhook with user's configuration
                 from discord_webhook import RateLimitedDiscordWebhook
@@ -99,26 +93,27 @@ async def main():
                     cycle_start_time = time.time()
                     monitor_cycle += 1
                     print(f"\n---- Monitor Cycle #{monitor_cycle} ----")
-                    
+
                     try:
-                        # Limit seen products cache size to prevent memory issues
-                        if monitor_cycle % 1000 == 0 and len(user_seen_products[user_id]) > 10000:
-                            print("Cleaning product history cache...")
-                            # Keep only the 5000 most recent products
-                            user_seen_products[user_id] = set(list(user_seen_products[user_id])[-5000:])
-                        
-                        # Use a new session for each cycle to prevent transaction issues
+                        # Clean expired products from cache
+                        current_time = time.time()
+                        user_seen_products[user_id] = {
+                            k: v for k, v in user_seen_products[user_id].items()
+                            if current_time - v <= PRODUCT_TTL
+                        }
+
+                        # Use a new session for each cycle
                         db.session.close()
                         db.session.begin()
-                        
-                        # Refresh user and config from database to catch any changes
+
+                        # Refresh user and config
                         user = User.query.get(user_id)
                         config = MonitorConfig.query.filter_by(user_id=user_id).first()
-                        
+
                         if not user or not user.enabled:
                             print(f"User {user_id} was disabled, exiting...")
                             sys.exit(0)
-                        
+
                         # Get user's active stores and keywords
                         active_stores = Store.query.filter_by(user_id=user_id, enabled=True).all()
                         active_keywords = Keyword.query.filter_by(user_id=user_id, enabled=True).all()
@@ -126,20 +121,20 @@ async def main():
                         print(f"Processing stores for user {user.username}:")
                         print(f"- Active stores: {len(active_stores)}")
                         print(f"- Active keywords: {len(active_keywords)}")
-                        
+
                         if not active_stores or not active_keywords:
                             print("No active stores or keywords to monitor. Waiting before next check.")
                             db.session.commit()
                             await asyncio.sleep(config.monitor_delay)
                             continue
 
-                        # Process stores in parallel batches to improve performance while avoiding rate limits
-                        batch_size = min(10, len(active_stores))  # Process up to 10 stores at once
+                        # Process stores in smaller batches with adaptive delay
+                        batch_size = min(5, len(active_stores))  # Reduced from 10 to 5
                         all_results = []
-                        
+
                         for i in range(0, len(active_stores), batch_size):
                             batch_stores = active_stores[i:i+batch_size]
-                            
+
                             tasks = []
                             for store in batch_stores:
                                 task = asyncio.create_task(
@@ -154,78 +149,54 @@ async def main():
                                 )
                                 tasks.append(task)
 
+                            # Add delay between batches to prevent overloading
+                            if i > 0:
+                                await asyncio.sleep(1)
+
                             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
                             all_results.extend(batch_results)
-                        
-                        # Process exceptions
-                        error_count = 0
-                        for i, result in enumerate(all_results):
-                            if isinstance(result, Exception):
-                                error_count += 1
-                                if error_count <= 5:  # Limit error output to prevent log spam
-                                    store_idx = min(i, len(active_stores) - 1)
-                                    print(f"Error monitoring store: {active_stores[store_idx].url}")
-                                    print(f"Exception: {str(result)}")
-                                
-                        # Count successful results
+
+                        # Process results
+                        error_count = sum(1 for r in all_results if isinstance(r, Exception))
                         total_new_products = sum(r for r in all_results if isinstance(r, int))
 
                         print(f"- New products found: {total_new_products}")
+                        print(f"- Errors encountered: {error_count}")
+
                         if monitor.failed_stores:
                             failed_count = len(monitor.failed_stores)
                             print(f"- Failed stores: {failed_count} (showing first 3)")
                             for store in list(monitor.failed_stores)[:3]:
                                 print(f"  - {store}")
-                        
-                        # Reset retry counter if we made it this far
+
+                        # Reset retry counter on success
                         retry_count = 0
-                        db_reconnect_attempts = 0
-                        
+
                         # Commit the transaction
                         db.session.commit()
-                        
-                        # Calculate efficient sleep time
+
+                        # Adaptive delay based on results
                         cycle_duration = time.time() - cycle_start_time
-                        print(f"- Cycle completed in {cycle_duration:.2f}s")
-                        
-                        # Adaptive delay: reduce delay slightly if new products were found
-                        delay_multiplier = 0.5 if total_new_products > 0 else 1.0
-                        sleep_time = max(0.1, config.monitor_delay * delay_multiplier - cycle_duration)
-                        print(f"Waiting {sleep_time:.2f}s until next check...")
+                        base_delay = config.monitor_delay
+
+                        # Adjust delay based on results
+                        if total_new_products > 0:
+                            # Reduce delay if we found products
+                            actual_delay = max(1, base_delay * 0.5)
+                        elif error_count > 0:
+                            # Increase delay if we had errors
+                            actual_delay = min(base_delay * 1.5, 60)
+                        else:
+                            actual_delay = base_delay
+
+                        sleep_time = max(1, actual_delay - cycle_duration)
+                        print(f"Cycle completed in {cycle_duration:.2f}s, waiting {sleep_time:.2f}s...")
                         await asyncio.sleep(sleep_time)
-                        
+
                     except Exception as e:
                         print(f"Error in monitor cycle: {e}")
-                        # Explicitly rollback any uncommitted transactions
-                        try:
-                            db.session.rollback()
-                            print("Database transaction rolled back")
-                            
-                            # Handle potential DB connection issues
-                            if "Can't reconnect until invalid transaction is rolled back" in str(e):
-                                db_reconnect_attempts += 1
-                                if db_reconnect_attempts >= max_db_reconnect:
-                                    print("Too many database reconnection attempts. Restarting monitor process.")
-                                    sys.exit(1)  # Exit with error code so the process restarts
-                                
-                                print(f"Database connection issue. Attempting to reconnect. ({db_reconnect_attempts}/{max_db_reconnect})")
-                                # Force close and create a new session
-                                try:
-                                    db.session.close()
-                                    db.session.remove()
-                                    db.engine.dispose()
-                                    db.session = db.create_scoped_session()
-                                    print("Database session recreated successfully")
-                                except Exception as session_error:
-                                    print(f"Error recreating session: {session_error}")
-                                await asyncio.sleep(5)
-                            else:
-                                # For other errors, just wait a bit
-                                await asyncio.sleep(2)
-                                
-                        except Exception as rollback_error:
-                            print(f"Error handling transaction rollback: {rollback_error}")
-                            await asyncio.sleep(3)
+                        db.session.rollback()
+                        await asyncio.sleep(5)  # Brief pause before retry
 
         except KeyboardInterrupt:
             print("\nMonitoring stopped by user")
@@ -234,25 +205,17 @@ async def main():
             retry_count += 1
             print(f"Fatal error in monitor: {e}")
             print(f"Retry {retry_count}/{max_retries}")
-            
-            # Ensure any open database transactions are rolled back
+
             try:
                 db.session.rollback()
-                print("Database transaction rolled back")
             except Exception as rollback_error:
                 print(f"Error rolling back transaction: {rollback_error}")
-            
+
             if retry_count >= max_retries:
                 print("Maximum retries reached. Exiting monitor.")
                 sys.exit(1)
-                
-            # Wait before retrying
-            print("Waiting 30 seconds before retry...")
-            try:
-                time.sleep(30)
-            except KeyboardInterrupt:
-                print("\nMonitoring stopped by user during retry wait")
-                sys.exit(0)
+
+            await asyncio.sleep(30)
 
 if __name__ == "__main__":
     asyncio.run(main())
