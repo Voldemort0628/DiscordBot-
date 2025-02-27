@@ -2,6 +2,9 @@ import asyncio
 import aiohttp
 import json
 import time
+import random
+import base64
+import hashlib
 from typing import Dict, List, Optional, Set
 from datetime import datetime
 from collections import deque
@@ -10,38 +13,98 @@ from urllib.parse import urlparse
 from aiohttp import ClientTimeout, TCPConnector, ClientError
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 from logger_config import scraper_logger
-from protection_bypass import ProtectionBypass
 
 logger = scraper_logger
 
-class DomainRateLimiter:
-    """Simple rate limiting with cooldown"""
-    def __init__(self, default_rate: float = 1.0):
-        self.default_rate = default_rate
-        self.last_request: Dict[str, float] = {}
-        self.domain_cooldowns: Dict[str, float] = {}
+class BrowserProfile:
+    """Emulate realistic browser fingerprints"""
+    def __init__(self):
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        ]
+        self.languages = ['en-US,en;q=0.9', 'en-GB,en;q=0.9', 'en-CA,en;q=0.9']
+        self.platforms = ['Windows', 'MacIntel']
 
-    async def acquire(self, domain: str):
-        """Wait for rate limit"""
+    def generate(self) -> Dict:
+        """Generate a consistent browser profile"""
+        user_agent = random.choice(self.user_agents)
+        language = random.choice(self.languages)
+        platform = random.choice(self.platforms)
+
+        profile = {
+            'user_agent': user_agent,
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'accept_language': language,
+            'accept_encoding': 'gzip, deflate, br',
+            'connection': 'keep-alive',
+            'dnt': '1',
+            'upgrade_insecure_requests': '1',
+            'sec_fetch_dest': 'document',
+            'sec_fetch_mode': 'navigate',
+            'sec_fetch_site': 'none',
+            'sec_fetch_user': '?1',
+            'sec_ch_ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+            'sec_ch_ua_mobile': '?0',
+            'sec_ch_ua_platform': f'"{platform}"'
+        }
+
+        return profile
+
+class SessionManager:
+    """Manage browser sessions with rotation"""
+    def __init__(self, max_sessions: int = 5):
+        self.max_sessions = max_sessions
+        self.sessions: Dict[str, Dict] = {}
+        self.browser_profile = BrowserProfile()
+
+    def _generate_client_identifier(self) -> str:
+        """Generate unique client identifier"""
+        timestamp = str(int(time.time() * 1000))
+        random_str = hashlib.md5(str(random.random()).encode()).hexdigest()[:8]
+        return f"{timestamp}-{random_str}"
+
+    def _generate_session_token(self, domain: str) -> str:
+        """Generate session token for Shopify"""
+        timestamp = int(time.time() * 1000)
+        session_id = hashlib.sha256(f"{domain}-{timestamp}".encode()).hexdigest()
+        return session_id
+
+    async def get_session(self, store_url: str) -> Dict:
+        """Get or create session for store"""
+        domain = urlparse(store_url).netloc
+
+        # Clean old sessions
         current_time = time.time()
-        cooldown = self.domain_cooldowns.get(domain, 0)
+        self.sessions = {
+            k: v for k, v in self.sessions.items()
+            if current_time - v['created_at'] < 3600  # 1 hour TTL
+        }
 
-        if current_time < cooldown:
-            raise Exception(f"Domain {domain} in cooldown for {cooldown - current_time:.1f}s")
+        # Rotate if too many sessions
+        if len(self.sessions) >= self.max_sessions:
+            oldest = min(self.sessions.items(), key=lambda x: x[1]['created_at'])
+            del self.sessions[oldest[0]]
 
-        delay = max(0, (1.0 / self.default_rate) - (current_time - self.last_request.get(domain, 0)))
-        if delay > 0:
-            await asyncio.sleep(delay)
+        # Generate new session
+        if domain not in self.sessions:
+            client_id = self._generate_client_identifier()
+            session_token = self._generate_session_token(domain)
+            browser = self.browser_profile.generate()
 
-        self.last_request[domain] = current_time
+            self.sessions[domain] = {
+                'client_id': client_id,
+                'session_token': session_token,
+                'browser': browser,
+                'created_at': current_time,
+                'request_count': 0,
+                'cookies': {}
+            }
 
-    def mark_failure(self, domain: str):
-        """Add domain to cooldown"""
-        self.domain_cooldowns[domain] = time.time() + 5  # 5 second cooldown
-
-    def mark_success(self, domain: str):
-        """Remove domain from cooldown"""
-        self.domain_cooldowns.pop(domain, None)
+        session = self.sessions[domain]
+        session['request_count'] += 1
+        return session
 
 class ProxyManager:
     """Advanced proxy management with health tracking"""
@@ -51,24 +114,33 @@ class ProxyManager:
         self.error_counts: Dict[str, int] = {}
         self.last_used: Dict[str, float] = {}
         self.in_use: Set[str] = set()
+        self.banned_until: Dict[str, float] = {}
 
     async def get_proxy(self) -> Optional[str]:
-        """Get best available proxy"""
+        """Get best available proxy with ban checking"""
         if not self.proxies:
             return None
 
-        available = [p for p in self.proxies if p not in self.in_use]
+        current_time = time.time()
+
+        # Filter out banned and in-use proxies
+        available = [
+            p for p in self.proxies 
+            if p not in self.in_use and current_time >= self.banned_until.get(p, 0)
+        ]
+
         if not available:
-            await asyncio.sleep(1)  # Wait if all proxies are in use
+            await asyncio.sleep(1)
             return await self.get_proxy()
 
+        # Select best proxy based on health and last used time
         proxy = max(available, key=lambda p: (
             self.health_scores.get(p, 0.5),
             -self.last_used.get(p, 0)
         ))
 
         self.in_use.add(proxy)
-        self.last_used[proxy] = time.time()
+        self.last_used[proxy] = current_time
         return proxy
 
     def release_proxy(self, proxy: str, success: bool, error_type: Optional[str] = None):
@@ -82,77 +154,41 @@ class ProxyManager:
         if success:
             self.health_scores[proxy] = min(1.0, score + 0.1)
             self.error_counts[proxy] = 0
+            return
+
+        # Handle failures
+        self.error_counts[proxy] = self.error_counts.get(proxy, 0) + 1
+
+        # Determine penalty and ban duration based on error type
+        if error_type == '429':  # Rate limit
+            penalty = 0.05
+            ban_duration = 300  # 5 minutes
+        elif error_type in ('403', '404'):  # Access denied
+            penalty = 0.2
+            ban_duration = 1800  # 30 minutes
+        elif error_type == 'timeout':
+            penalty = 0.15
+            ban_duration = 600  # 10 minutes
         else:
-            # Adjust penalty based on error type
             penalty = 0.1
-            if error_type == '429':  # Rate limit
-                penalty = 0.05
-            elif error_type in ('403', '404'):  # Access denied
-                penalty = 0.2
-            elif error_type == 'timeout':
-                penalty = 0.15
+            ban_duration = 900  # 15 minutes
 
-            self.health_scores[proxy] = max(0.0, score - penalty)
-            self.error_counts[proxy] = self.error_counts.get(proxy, 0) + 1
+        self.health_scores[proxy] = max(0.0, score - penalty)
 
-class ProductTracker:
-    """Track product changes with deduplication"""
-    def __init__(self, ttl: int = 3600):
-        self.seen_products: Dict[str, Dict] = {}
-        self.ttl = ttl
-        self.changes = deque(maxlen=1000)
-
-    def is_new_or_changed(self, product: Dict) -> bool:
-        """Check if product is new or has changed"""
-        current_time = time.time()
-        product_id = str(product.get('id'))
-
-        # Clean expired entries
-        self.seen_products = {
-            k: v for k, v in self.seen_products.items()
-            if current_time - v['timestamp'] <= self.ttl
-        }
-
-        # Generate hash of important fields
-        state_hash = hash(json.dumps({
-            'title': product.get('title'),
-            'price': product.get('price'),
-            'available': product.get('available'),
-            'variants': product.get('variants', [])
-        }, sort_keys=True))
-
-        if product_id not in self.seen_products:
-            self.seen_products[product_id] = {
-                'timestamp': current_time,
-                'hash': state_hash
-            }
-            return True
-
-        previous = self.seen_products[product_id]
-        if previous['hash'] != state_hash:
-            self.changes.append({
-                'product_id': product_id,
-                'timestamp': current_time,
-                'previous_hash': previous['hash'],
-                'new_hash': state_hash
-            })
-            previous.update({
-                'timestamp': current_time,
-                'hash': state_hash
-            })
-            return True
-
-        return False
+        # Ban proxy if too many errors
+        if self.error_counts[proxy] >= 3:
+            self.banned_until[proxy] = time.time() + ban_duration
+            logger.warning(f"Proxy {proxy} banned for {ban_duration}s due to repeated errors")
 
 class ShopifyMonitor:
-    """Basic Shopify monitor with error handling and proxy management"""
+    """Advanced Shopify monitor with anti-bot measures"""
     def __init__(self, rate_limit: float = 1.0, proxies: Optional[List[str]] = None):
-        self.rate_limiter = DomainRateLimiter(rate_limit)
+        self.session_manager = SessionManager()
         self.proxy_manager = ProxyManager(proxies)
+        self.rate_limit = rate_limit
+        self.last_request: Dict[str, float] = {}
+        self.product_hashes: Dict[str, str] = {}
         self.session: Optional[aiohttp.ClientSession] = None
-        self.product_tracker = ProductTracker()
-        self.protection_bypass = ProtectionBypass()
-        self.verified_stores: Set[str] = set()
 
     async def setup(self):
         """Initialize session"""
@@ -161,8 +197,7 @@ class ShopifyMonitor:
             connector = TCPConnector(ssl=False, limit=10)
             self.session = aiohttp.ClientSession(
                 timeout=timeout,
-                connector=connector,
-                headers={'User-Agent': USER_AGENT}
+                connector=connector
             )
 
     async def close(self):
@@ -171,72 +206,95 @@ class ShopifyMonitor:
             await self.session.close()
 
     def _get_api_url(self, store_url: str) -> str:
-        """Generate API URL"""
+        """Generate inventory API URL"""
         base = store_url.rstrip('/')
         if not base.startswith(('http://', 'https://')):
             base = f'https://{base}'
         return f"{base}/products.json"
 
-    async def verify_store(self, store_url: str) -> bool:
-        """Verify store with basic checks"""
-        try:
-            if store_url in self.verified_stores:
-                return True
+    def _get_graphql_url(self, store_url: str) -> str:
+        """Generate GraphQL API URL"""
+        base = store_url.rstrip('/')
+        if not base.startswith(('http://', 'https://')):
+            base = f'https://{base}'
+        return f"{base}/api/2024-01/graphql.json"
 
-            if await self.protection_bypass.verify_store(self.session, store_url):
-                self.verified_stores.add(store_url)
-                return True
+    async def _wait_for_rate_limit(self, domain: str):
+        """Implement rate limiting with jitter"""
+        current_time = time.time()
+        last_request = self.last_request.get(domain, 0)
 
-            return False
+        delay = (1.0 / self.rate_limit) - (current_time - last_request)
+        if delay > 0:
+            jitter = random.uniform(0, 0.1)  # Add 0-100ms jitter
+            await asyncio.sleep(delay + jitter)
 
-        except Exception as e:
-            logger.error(f"Error verifying store {store_url}: {e}")
-            return False
+        self.last_request[domain] = time.time()
 
     async def get_store_products(self, store_url: str) -> Optional[List[Dict]]:
-        """Fetch products with error handling and proxy support"""
+        """Fetch products with advanced anti-bot evasion"""
         await self.setup()
         domain = urlparse(store_url).netloc
 
         try:
-            # Verify store first
-            if not await self.verify_store(store_url):
-                logger.error(f"Failed to verify store {store_url}")
-                return None
-
-            # Get proxy and wait for rate limit
+            # Get session and proxy
+            session_data = await self.session_manager.get_session(store_url)
             proxy = await self.proxy_manager.get_proxy()
-            await self.rate_limiter.acquire(domain)
+            await self._wait_for_rate_limit(domain)
 
-            api_url = self._get_api_url(store_url)
-            params = self.protection_bypass.get_request_params(store_url)
+            # Prepare request
+            headers = session_data['browser'].copy()
+            headers.update({
+                'x-shopify-client-id': session_data['client_id'],
+                'x-shopify-session-token': session_data['session_token'],
+                'x-requested-with': 'XMLHttpRequest',
+                'origin': store_url,
+                'referer': f"{store_url}/"
+            })
+
+            cookies = {
+                '_shopify_y': str(int(time.time() - 86400)),
+                '_shopify_s': session_data['session_token'],
+                'cart_currency': 'USD',
+                '_secure_session_id': hashlib.sha256(session_data['session_token'].encode()).hexdigest()
+            }
+            cookies.update(session_data['cookies'])
+
+            params = {
+                'headers': headers,
+                'cookies': cookies,
+                'allow_redirects': True,
+                'ssl': False
+            }
             if proxy:
                 params['proxy'] = proxy
 
-            async with self.session.get(api_url, **params) as response:
+            # Make request
+            async with self.session.get(self._get_api_url(store_url), **params) as response:
+                # Handle various response cases
                 if response.status == 429:
                     logger.warning(f"Rate limited on {store_url}")
-                    self.rate_limiter.mark_failure(domain)
                     if proxy:
                         self.proxy_manager.release_proxy(proxy, False, '429')
                     return None
 
                 if response.status != 200:
                     logger.error(f"HTTP {response.status} from {store_url}")
-                    self.rate_limiter.mark_failure(domain)
                     if proxy:
                         self.proxy_manager.release_proxy(proxy, False, str(response.status))
                     return None
 
+                # Store new cookies
+                for cookie in response.cookies:
+                    session_data['cookies'][cookie.key] = cookie.value
+
                 try:
                     data = await response.json()
-                    self.rate_limiter.mark_success(domain)
                     if proxy:
                         self.proxy_manager.release_proxy(proxy, True)
                     return data.get('products', [])
                 except ValueError as e:
                     logger.error(f"Invalid JSON from {store_url}: {e}")
-                    self.rate_limiter.mark_failure(domain)
                     if proxy:
                         self.proxy_manager.release_proxy(proxy, False, 'json')
                     return None
@@ -254,7 +312,7 @@ class ShopifyMonitor:
             return None
 
     def _process_product(self, product: Dict) -> Optional[Dict]:
-        """Process product data"""
+        """Process product data with variant handling"""
         try:
             variants = product.get('variants', [])
             if not variants:
@@ -269,13 +327,44 @@ class ShopifyMonitor:
             if total_stock <= 0:
                 return None
 
-            return {
+            # Generate product hash for change detection
+            product_state = {
                 'id': str(product['id']),
+                'title': product['title'],
+                'variants': [{
+                    'id': str(v['id']),
+                    'price': v.get('price'),
+                    'available': v.get('available'),
+                    'inventory': v.get('inventory_quantity')
+                } for v in variants]
+            }
+
+            product_hash = hashlib.sha256(
+                json.dumps(product_state, sort_keys=True).encode()
+            ).hexdigest()
+
+            # Check if product changed
+            product_id = str(product['id'])
+            if product_id in self.product_hashes:
+                if self.product_hashes[product_id] == product_hash:
+                    return None
+
+            self.product_hashes[product_id] = product_hash
+
+            return {
+                'id': product_id,
                 'title': product['title'],
                 'handle': product.get('handle', ''),
                 'price': float(variants[0].get('price', 0)),
-                'available': total_stock > 0,
-                'stock': total_stock
+                'available': True,
+                'stock': total_stock,
+                'variants': [{
+                    'id': str(v['id']),
+                    'title': v.get('title', 'Default'),
+                    'price': float(v.get('price', 0)),
+                    'available': v.get('available', False),
+                    'inventory': v.get('inventory_quantity', 0)
+                } for v in variants if v.get('available')]
             }
 
         except Exception as e:
@@ -287,7 +376,12 @@ class ShopifyMonitor:
         if not keywords:
             return True
 
-        text = product.get('title', '').lower()
+        text = (
+            product.get('title', '').lower() + ' ' +
+            product.get('handle', '').lower() + ' ' +
+            product.get('product_type', '').lower() + ' ' +
+            product.get('vendor', '').lower()
+        )
         return any(k.lower() in text for k in keywords)
 
     async def monitor_store(self, store_url: str, keywords: List[str]) -> List[Dict]:
@@ -300,13 +394,13 @@ class ShopifyMonitor:
         for product in products:
             if self._matches_keywords(product, keywords):
                 processed = self._process_product(product)
-                if processed and self.product_tracker.is_new_or_changed(processed):
+                if processed:
                     matching.append(processed)
 
         return matching
 
     async def monitor_stores(self, stores: List[str], keywords: List[str]) -> List[Dict]:
-        """Monitor multiple stores"""
+        """Monitor multiple stores concurrently"""
         await self.setup()
 
         tasks = []
@@ -326,9 +420,8 @@ class ShopifyMonitor:
         return products
 
 async def main():
-    """Example usage of ShopifyMonitor"""
+    """Example usage"""
     monitor = ShopifyMonitor(rate_limit=1.0)
-
     try:
         stores = [
             "https://shop.shopwss.com",
