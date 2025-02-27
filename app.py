@@ -58,15 +58,15 @@ def toggle_monitor():
 @app.route('/')
 @login_required
 def dashboard():
-    stores = Store.query.all()
-    keywords = Keyword.query.all()
-    config = MonitorConfig.query.first()
+    stores = Store.query.filter_by(added_by=current_user.id).all()
+    keywords = Keyword.query.filter_by(added_by=current_user.id).all()
+    config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
     monitor_running = is_monitor_running()
     return render_template('dashboard.html', 
-                         stores=stores, 
-                         keywords=keywords, 
-                         config=config,
-                         monitor_running=monitor_running)
+                        stores=stores, 
+                        keywords=keywords, 
+                        config=config,
+                        monitor_running=monitor_running)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -98,7 +98,6 @@ def manage_stores():
         flash('Store added successfully')
         return redirect(url_for('manage_stores'))
 
-    # Handle toggle and delete actions
     elif request.method == 'POST' and 'action' in request.form:
         store_id = request.form.get('store_id')
         store = Store.query.get(store_id)
@@ -130,7 +129,6 @@ def manage_keywords():
         flash('Keyword added successfully')
         return redirect(url_for('manage_keywords'))
 
-    # Handle toggle and delete actions
     elif request.method == 'POST' and 'action' in request.form:
         keyword_id = request.form.get('keyword_id')
         keyword = Keyword.query.get(keyword_id)

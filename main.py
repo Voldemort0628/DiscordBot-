@@ -5,7 +5,7 @@ from typing import List, Dict, Set
 import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
-from flask import Flask
+from flask import Flask, redirect
 from models import db, Store, Keyword, MonitorConfig, User
 
 app = Flask(__name__)
@@ -110,11 +110,9 @@ def home():
 @app.route('/dashboard')
 def redirect_to_dashboard():
     """Redirect to the main dashboard app"""
-    from flask import redirect
     # Redirect to the web dashboard - use the default port (80) for the main app
     dashboard_url = f"https://{os.environ.get('REPL_SLUG')}.{os.environ.get('REPL_OWNER')}.repl.co"
     return redirect(dashboard_url)
-
 
 @app.route('/status')
 def status_all():
