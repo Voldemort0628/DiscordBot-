@@ -15,67 +15,33 @@ from protection_bypass import ProtectionBypass
 logger = scraper_logger
 
 class DomainRateLimiter:
-    """Per-domain rate limiting with dynamic backoff"""
+    """Simple rate limiting with cooldown"""
     def __init__(self, default_rate: float = 1.0):
         self.default_rate = default_rate
-        self.domain_rates: Dict[str, float] = {}
         self.last_request: Dict[str, float] = {}
-        self.backoff_multiplier: Dict[str, float] = {}
-        self.failed_domains: Dict[str, Dict] = {}
+        self.domain_cooldowns: Dict[str, float] = {}
 
     async def acquire(self, domain: str):
-        """Wait for rate limit slot with dynamic backoff"""
+        """Wait for rate limit"""
         current_time = time.time()
+        cooldown = self.domain_cooldowns.get(domain, 0)
 
-        # Check if domain is in cooldown
-        if domain in self.failed_domains:
-            failed_data = self.failed_domains[domain]
-            if current_time < failed_data['next_try']:
-                raise Exception(f"Domain {domain} in cooldown for {failed_data['next_try'] - current_time:.1f}s")
+        if current_time < cooldown:
+            raise Exception(f"Domain {domain} in cooldown for {cooldown - current_time:.1f}s")
 
-        rate = self.domain_rates.get(domain, self.default_rate)
-        last_time = self.last_request.get(domain, 0)
-        multiplier = self.backoff_multiplier.get(domain, 1.0)
-
-        delay = max(0, (1.0 / rate) * multiplier - (current_time - last_time))
+        delay = max(0, (1.0 / self.default_rate) - (current_time - self.last_request.get(domain, 0)))
         if delay > 0:
             await asyncio.sleep(delay)
 
         self.last_request[domain] = current_time
 
-    def mark_failure(self, domain: str, error_type: str):
-        """Mark domain failure with exponential backoff"""
-        current_time = time.time()
-
-        if domain not in self.failed_domains:
-            self.failed_domains[domain] = {
-                'failures': 0,
-                'next_try': current_time,
-                'backoff': 5  # Start with 5 second backoff
-            }
-
-        data = self.failed_domains[domain]
-        data['failures'] += 1
-
-        # Exponential backoff based on error type
-        if error_type == '404':  # Invalid endpoint
-            data['backoff'] = min(3600, data['backoff'] * 2)  # Max 1 hour
-        elif error_type == '429':  # Rate limit
-            data['backoff'] = min(300, data['backoff'] * 1.5)  # Max 5 minutes
-        elif error_type == 'dns':  # DNS failure
-            data['backoff'] = min(1800, data['backoff'] * 2)  # Max 30 minutes
-        else:
-            data['backoff'] = min(600, data['backoff'] * 1.5)  # Max 10 minutes
-
-        data['next_try'] = current_time + data['backoff']
-        logger.warning(f"Domain {domain} backed off for {data['backoff']}s after {error_type} error")
+    def mark_failure(self, domain: str):
+        """Add domain to cooldown"""
+        self.domain_cooldowns[domain] = time.time() + 5  # 5 second cooldown
 
     def mark_success(self, domain: str):
-        """Mark successful request and reduce backoff"""
-        if domain in self.failed_domains:
-            self.failed_domains[domain]['failures'] = max(0, self.failed_domains[domain]['failures'] - 1)
-            if self.failed_domains[domain]['failures'] == 0:
-                del self.failed_domains[domain]
+        """Remove domain from cooldown"""
+        self.domain_cooldowns.pop(domain, None)
 
 class ProxyManager:
     """Advanced proxy management with health tracking"""
@@ -179,7 +145,7 @@ class ProductTracker:
         return False
 
 class ShopifyMonitor:
-    """Advanced Shopify product monitor with robust error handling"""
+    """Basic Shopify monitor with error handling and proxy management"""
     def __init__(self, rate_limit: float = 1.0, proxies: Optional[List[str]] = None):
         self.rate_limiter = DomainRateLimiter(rate_limit)
         self.proxy_manager = ProxyManager(proxies)
@@ -189,15 +155,10 @@ class ShopifyMonitor:
         self.verified_stores: Set[str] = set()
 
     async def setup(self):
-        """Initialize monitor resources"""
+        """Initialize session"""
         if self.session is None:
-            timeout = ClientTimeout(total=30, connect=10)
-            connector = TCPConnector(
-                ssl=False,
-                limit=10,
-                force_close=True,
-                enable_cleanup_closed=True
-            )
+            timeout = ClientTimeout(total=30)
+            connector = TCPConnector(ssl=False, limit=10)
             self.session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector,
@@ -210,14 +171,14 @@ class ShopifyMonitor:
             await self.session.close()
 
     def _get_api_url(self, store_url: str) -> str:
-        """Generate API endpoint URL"""
+        """Generate API URL"""
         base = store_url.rstrip('/')
         if not base.startswith(('http://', 'https://')):
             base = f'https://{base}'
         return f"{base}/products.json"
 
     async def verify_store(self, store_url: str) -> bool:
-        """Verify store accessibility and protection"""
+        """Verify store with basic checks"""
         try:
             if store_url in self.verified_stores:
                 return True
@@ -232,110 +193,89 @@ class ShopifyMonitor:
             logger.error(f"Error verifying store {store_url}: {e}")
             return False
 
-    async def get_store_products(self, store_url: str, retries: int = 3) -> Optional[List[Dict]]:
-        """Fetch products from store with retries and error handling"""
+    async def get_store_products(self, store_url: str) -> Optional[List[Dict]]:
+        """Fetch products with error handling and proxy support"""
         await self.setup()
         domain = urlparse(store_url).netloc
 
-        # Verify store first
-        if not await self.verify_store(store_url):
-            logger.error(f"Failed to verify store {store_url}")
-            return None
+        try:
+            # Verify store first
+            if not await self.verify_store(store_url):
+                logger.error(f"Failed to verify store {store_url}")
+                return None
 
-        api_url = self._get_api_url(store_url)
+            # Get proxy and wait for rate limit
+            proxy = await self.proxy_manager.get_proxy()
+            await self.rate_limiter.acquire(domain)
 
-        for attempt in range(retries):
-            try:
-                # Get proxy and wait for rate limit
-                proxy = await self.proxy_manager.get_proxy()
-                await self.rate_limiter.acquire(domain)
+            api_url = self._get_api_url(store_url)
+            params = self.protection_bypass.get_request_params(store_url)
+            if proxy:
+                params['proxy'] = proxy
 
-                # Get request parameters with protection bypass
-                request_params = self.protection_bypass.get_request_params(store_url)
-                if proxy:
-                    request_params['proxy'] = proxy
+            async with self.session.get(api_url, **params) as response:
+                if response.status == 429:
+                    logger.warning(f"Rate limited on {store_url}")
+                    self.rate_limiter.mark_failure(domain)
+                    if proxy:
+                        self.proxy_manager.release_proxy(proxy, False, '429')
+                    return None
 
-                # Make request
-                async with self.session.get(api_url, **request_params) as response:
-                    if response.status == 404:
-                        logger.error(f"Invalid API endpoint for {store_url}")
-                        self.rate_limiter.mark_failure(domain, '404')
-                        return None
+                if response.status != 200:
+                    logger.error(f"HTTP {response.status} from {store_url}")
+                    self.rate_limiter.mark_failure(domain)
+                    if proxy:
+                        self.proxy_manager.release_proxy(proxy, False, str(response.status))
+                    return None
 
-                    if response.status == 429:
-                        logger.warning(f"Rate limited on {store_url}")
-                        self.rate_limiter.mark_failure(domain, '429')
-                        if proxy:
-                            self.proxy_manager.release_proxy(proxy, False, '429')
-                        continue
-
-                    if response.status >= 400:
-                        logger.error(f"HTTP {response.status} from {store_url}")
-                        self.rate_limiter.mark_failure(domain, str(response.status))
-                        if proxy:
-                            self.proxy_manager.release_proxy(proxy, False, str(response.status))
-                        continue
-
-                    # Success
+                try:
+                    data = await response.json()
                     self.rate_limiter.mark_success(domain)
                     if proxy:
                         self.proxy_manager.release_proxy(proxy, True)
+                    return data.get('products', [])
+                except ValueError as e:
+                    logger.error(f"Invalid JSON from {store_url}: {e}")
+                    self.rate_limiter.mark_failure(domain)
+                    if proxy:
+                        self.proxy_manager.release_proxy(proxy, False, 'json')
+                    return None
 
-                    try:
-                        data = await response.json()
-                        return data.get('products', [])
-                    except ValueError as e:
-                        logger.error(f"Invalid JSON from {store_url}: {e}")
-                        self.rate_limiter.mark_failure(domain, 'json')
-                        continue
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout on {store_url}")
+            if proxy:
+                self.proxy_manager.release_proxy(proxy, False, 'timeout')
+            return None
 
-            except Exception as e:
-                logger.error(f"Error fetching {store_url} (attempt {attempt + 1}): {e}")
-                self.rate_limiter.mark_failure(domain, 'unknown')
-                if proxy:
-                    self.proxy_manager.release_proxy(proxy, False, 'unknown')
-
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                continue
-
-        return None
+        except Exception as e:
+            logger.error(f"Error fetching {store_url}: {e}")
+            if proxy:
+                self.proxy_manager.release_proxy(proxy, False, 'unknown')
+            return None
 
     def _process_product(self, product: Dict) -> Optional[Dict]:
-        """Process raw product data into structured format"""
+        """Process product data"""
         try:
             variants = product.get('variants', [])
             if not variants:
                 return None
 
-            # Calculate availability and stock levels
-            total_stock = 0
-            sizes = {}
-            for variant in variants:
-                if variant.get('available'):
-                    size = str(variant.get('title', 'One Size'))
-                    inventory = variant.get('inventory_quantity', 0)
-                    total_stock += inventory
-                    sizes[size] = inventory
+            total_stock = sum(
+                v.get('inventory_quantity', 0)
+                for v in variants
+                if v.get('available')
+            )
 
-            if not total_stock:
+            if total_stock <= 0:
                 return None
 
             return {
                 'id': str(product['id']),
                 'title': product['title'],
-                'handle': product['handle'],
+                'handle': product.get('handle', ''),
                 'price': float(variants[0].get('price', 0)),
-                'image_url': (product.get('images', [{}])[0] or {}).get('src'),
                 'available': total_stock > 0,
-                'total_stock': total_stock,
-                'sizes': sizes,
-                'variants': [{
-                    'id': str(v['id']),
-                    'title': v['title'],
-                    'price': float(v.get('price', 0)),
-                    'available': v.get('available', False)
-                } for v in variants]
+                'stock': total_stock
             }
 
         except Exception as e:
@@ -347,15 +287,11 @@ class ShopifyMonitor:
         if not keywords:
             return True
 
-        text = (
-            product.get('title', '').lower() + ' ' +
-            product.get('handle', '').lower() + ' ' +
-            product.get('description', '').lower()
-        )
+        text = product.get('title', '').lower()
         return any(k.lower() in text for k in keywords)
 
     async def monitor_store(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """Monitor a single store with error handling"""
+        """Monitor single store"""
         products = await self.get_store_products(store_url)
         if not products:
             return []
@@ -370,7 +306,7 @@ class ShopifyMonitor:
         return matching
 
     async def monitor_stores(self, stores: List[str], keywords: List[str]) -> List[Dict]:
-        """Monitor multiple stores concurrently"""
+        """Monitor multiple stores"""
         await self.setup()
 
         tasks = []
