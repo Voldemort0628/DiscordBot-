@@ -1,3 +1,4 @@
+import asyncio
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig, RetailScraper, Proxy # Added Proxy model
@@ -142,6 +143,7 @@ def variant_scraper():
     return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
 
 
+
 @app.route('/toggle_monitor', methods=['POST'])
 @login_required
 def toggle_monitor():
@@ -195,7 +197,7 @@ def retail_scraper():
                 db.session.commit()
                 flash('Scraper deleted')
             elif action == 'scrape_now':
-                # Perform immediate scrape
+                # Create retail scraper instance
                 retail_scraper = RetailScraperUtil()
                 results = []
 
@@ -203,7 +205,11 @@ def retail_scraper():
                     if scraper.retailer == 'target':
                         results = retail_scraper.scrape_target(scraper.keyword)
                     elif scraper.retailer == 'walmart':
-                        results = retail_scraper.scrape_walmart(scraper.keyword)
+                        # Run Walmart scraper asynchronously
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        results = loop.run_until_complete(retail_scraper.scrape_walmart(scraper.keyword))
+                        loop.close()
                     elif scraper.retailer == 'bestbuy':
                         results = retail_scraper.scrape_bestbuy(scraper.keyword)
 
@@ -221,10 +227,14 @@ def retail_scraper():
                     scraper.last_check = datetime.utcnow()
                     db.session.commit()
                     flash(f'Scrape completed - Found {len(results)} items')
+
                 except Exception as e:
                     error_msg = str(e)
                     print(f"Scraping error: {error_msg}")  # Log the error
                     flash(f'Error during scraping: {error_msg}', 'error')
+                finally:
+                    if hasattr(retail_scraper, 'cleanup'):
+                        retail_scraper.cleanup()
 
     scrapers = RetailScraper.query.all()
     return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)
