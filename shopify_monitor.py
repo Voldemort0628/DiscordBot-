@@ -42,18 +42,55 @@ class ShopifyMonitor:
         self._rate_limit()
 
         try:
-            products_url = f"{store_url}/products.json?limit={MAX_PRODUCTS}"
-            response = self.session.get(products_url, timeout=10)
+            # Use a smaller initial limit for faster responses
+            initial_limit = 50
+            products_url = f"{store_url}/products.json?limit={initial_limit}"
+            
+            # Use shorter timeout for faster error detection
+            response = self.session.get(
+                products_url, 
+                timeout=5, 
+                headers={
+                    "Accept-Encoding": "gzip, deflate",
+                    "Cache-Control": "no-cache"
+                }
+            )
             response.raise_for_status()
 
             data = response.json()
             matching_products = []
+            
+            # Optimize keyword matching with pre-computed lowercase
+            lowercase_keywords = [kw.lower() for kw in keywords]
 
             for product in data.get("products", []):
-                if any(keyword.lower() in product["title"].lower() for keyword in keywords):
+                product_title_lower = product["title"].lower()
+                if any(keyword in product_title_lower for keyword in lowercase_keywords):
                     processed_product = self._process_product(store_url, product)
                     if processed_product:
                         matching_products.append(processed_product)
+            
+            # If we got max products and didn't find any matches,
+            # fetch more products only if necessary
+            product_count = len(data.get("products", []))
+            if product_count >= initial_limit and not matching_products and MAX_PRODUCTS > initial_limit:
+                # Get more products in a second request
+                products_url = f"{store_url}/products.json?limit={MAX_PRODUCTS}&page=2"
+                
+                try:
+                    response = self.session.get(products_url, timeout=8)
+                    response.raise_for_status()
+                    more_data = response.json()
+                    
+                    for product in more_data.get("products", []):
+                        product_title_lower = product["title"].lower()
+                        if any(keyword in product_title_lower for keyword in lowercase_keywords):
+                            processed_product = self._process_product(store_url, product)
+                            if processed_product:
+                                matching_products.append(processed_product)
+                except Exception as e:
+                    # If second request fails, still return what we found from first request
+                    print(f"Error fetching additional products from {store_url}: {e}")
 
             # Reset failed status and retry count if successful
             self.failed_stores.discard(store_url)

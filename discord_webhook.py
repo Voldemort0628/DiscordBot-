@@ -9,35 +9,52 @@ class RateLimitedDiscordWebhook:
     def __init__(self, webhook_url):
         self.webhook_url = webhook_url
         self.last_request_time = 0
-        self.rate_limit_window = 2  # seconds between requests
-        self.max_retries = 3
+        self.rate_limit_window = 1.25  # seconds between requests (Discord limits to ~50 per minute)
+        self.max_retries = 5
+        self.session = requests.Session()  # Keep session for connection pooling
+        self.rate_limit_remaining = 5  # Track Discord's rate limit headers
+        self.rate_limit_reset = 0
 
     def send_product_notification(self, product):
-        """Send product notification with rate limiting and retry logic"""
+        """Send product notification with adaptive rate limiting and retry logic"""
         for attempt in range(self.max_retries):
-            # Apply rate limiting
+            # Apply adaptive rate limiting based on Discord's response headers
             current_time = time.time()
-            time_since_last = current_time - self.last_request_time
-            if time_since_last < self.rate_limit_window:
-                sleep_time = self.rate_limit_window - time_since_last + random.uniform(0.1, 0.5)
+            
+            # Check if we need to wait based on Discord's rate limit headers
+            if self.rate_limit_remaining <= 1 and current_time < self.rate_limit_reset:
+                wait_time = self.rate_limit_reset - current_time + 0.1
+                print(f"Waiting for Discord rate limit to reset. Sleeping {wait_time:.2f}s")
+                time.sleep(wait_time)
+            # Otherwise, use our internal rate limiting
+            elif current_time - self.last_request_time < self.rate_limit_window:
+                # Add slight jitter to avoid bursts hitting rate limits
+                sleep_time = self.rate_limit_window - (current_time - self.last_request_time)
+                # Small amount of jitter to avoid predictable patterns
+                sleep_time += random.uniform(0.05, 0.2)  
                 time.sleep(sleep_time)
 
             try:
-                # Create webhook content
+                # Create webhook content - only include essential fields for speed
                 embed = {
                     "title": product["title"],
                     "url": product["url"],
                     "color": INFO_COLOR,
                     "timestamp": datetime.utcnow().isoformat(),
-                    "thumbnail": {"url": product.get("image_url", "")},
-                    "fields": [
-                        {
-                            "name": "Price",
-                            "value": f"${product['price']}" if isinstance(product['price'], (int, float)) else product['price'],
-                            "inline": True
-                        }
-                    ]
                 }
+                
+                # Only add thumbnail if there's an image URL to reduce payload size
+                if product.get("image_url"):
+                    embed["thumbnail"] = {"url": product["image_url"]}
+                
+                # Add essential fields
+                embed["fields"] = [
+                    {
+                        "name": "Price",
+                        "value": f"${product['price']}" if isinstance(product['price'], (int, float)) else product['price'],
+                        "inline": True
+                    }
+                ]
 
                 # Add retailer field if present (for retail scraper results)
                 if "retailer" in product:
@@ -85,31 +102,40 @@ class RateLimitedDiscordWebhook:
                     "embeds": [embed]
                 }
 
-                # Send webhook
-                response = requests.post(
+                # Send webhook with connection pooling and timeout
+                response = self.session.post(
                     self.webhook_url,
                     json=payload,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
+                    timeout=3  # Add timeout to prevent hanging
                 )
                 response.raise_for_status()
 
-                # Update last request time
+                # Update rate limit tracking from Discord's headers
                 self.last_request_time = time.time()
+                if 'X-RateLimit-Remaining' in response.headers:
+                    self.rate_limit_remaining = int(response.headers.get('X-RateLimit-Remaining', 5))
+                if 'X-RateLimit-Reset-After' in response.headers:
+                    reset_after = float(response.headers.get('X-RateLimit-Reset-After', 0))
+                    self.rate_limit_reset = time.time() + reset_after
 
                 # Check for success
-                if response and response.status_code == 200:
+                if response.status_code == 200 or response.status_code == 204:
                     return True
 
                 # Handle rate limiting
-                if response and response.status_code == 429:
-                    retry_after = int(response.headers.get('Retry-After', 5)) + random.uniform(0.5, 1.5)
+                if response.status_code == 429:
+                    retry_after = float(response.headers.get('Retry-After', 5))
                     print(f"Rate limited by Discord. Retrying after {retry_after}s")
+                    # Use the exact retry time Discord tells us to use
                     time.sleep(retry_after)
                     continue
 
             except requests.exceptions.RequestException as e:
                 print(f"Error sending Discord webhook: {e}")
-                time.sleep(1 * (attempt + 1))  # Progressive backoff
+                # Use exponential backoff for network errors
+                backoff = (2 ** attempt) * 0.5
+                time.sleep(min(backoff, 5))  # Cap at 5 seconds
 
         print("Failed to send webhook after multiple retries")
         return False
