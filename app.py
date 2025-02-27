@@ -233,16 +233,27 @@ def toggle_monitor():
                 try:
                     process = psutil.Process(proc.info['pid'])
                     process.terminate()
-                    process.wait(timeout=5)  # Wait for process to terminate
+                    process.wait(timeout=5)
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired) as e:
                     print(f"Error terminating process {proc.info['pid']}: {e}")
             flash('Monitor stopped successfully')
         else:
-            # Start the monitor with current environment
+            # Start the monitor as a new process with isolated environment
             env = os.environ.copy()
-            # Ensure user's webhook URL is available to the monitor
+
+            # Get user's configuration
+            config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
+            if not config:
+                flash('Please configure monitor settings first', 'error')
+                return redirect(url_for('manage_config'))
+
+            # Set user-specific environment variables
+            env['MONITOR_USER_ID'] = str(current_user.id)
             if current_user.discord_webhook_url:
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
+            else:
+                flash('Please configure Discord webhook URL first', 'error')
+                return redirect(url_for('manage_config'))
 
             subprocess.Popen(['python', 'main.py'], env=env)
             time.sleep(2)  # Give process time to start
