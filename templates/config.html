@@ -25,6 +25,11 @@
                         {{ form.max_products(class="form-control") }}
                         <div class="form-text">Maximum number of products to fetch per store</div>
                     </div>
+                    <div class="mb-3">
+                        {{ form.discord_webhook_url.label(class="form-label") }}
+                        {{ form.discord_webhook_url(class="form-control") }}
+                        <div class="form-text">Your Discord webhook URL for notifications</div>
+                    </div>
                     {{ form.submit(class="btn btn-primary") }}
                 </form>
             </div>

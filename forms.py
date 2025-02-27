@@ -34,6 +34,7 @@ class ConfigForm(FlaskForm):
     rate_limit = FloatField('Rate Limit (requests/second)', validators=[DataRequired()])
     monitor_delay = IntegerField('Monitor Delay (seconds)', validators=[DataRequired()])
     max_products = IntegerField('Max Products per Store', validators=[DataRequired()])
+    discord_webhook_url = StringField('Discord Webhook URL', validators=[Optional(), URL()])
     submit = SubmitField('Save Configuration')
 
 class VariantScraperForm(FlaskForm):

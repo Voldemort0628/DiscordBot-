@@ -32,6 +32,7 @@ class MonitorConfig(db.Model):
     rate_limit = db.Column(db.Float, default=1.0)
     monitor_delay = db.Column(db.Integer, default=30)
     max_products = db.Column(db.Integer, default=250)
+    discord_webhook_url = db.Column(db.String(500))  # Added webhook URL field
 
 class RetailScraper(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -205,7 +205,10 @@ def toggle_monitor():
 def retail_scraper():
     form = RetailScraperForm()
     results = []
-    webhook = DiscordWebhook()
+
+    # Get user's webhook configuration
+    config = MonitorConfig.query.first()
+    webhook = DiscordWebhook(webhook_url=config.discord_webhook_url) if config and config.discord_webhook_url else None
 
     if form.validate_on_submit():
         scraper = RetailScraper(
@@ -240,16 +243,19 @@ def retail_scraper():
                         target_scraper = TargetScraper()
                         results = target_scraper.search_products(scraper.keyword)
 
-                        # Send results to Discord
-                        for result in results:
-                            product_data = {
-                                'title': result.title,
-                                'price': result.price,
-                                'url': result.url,
-                                'image_url': result.image_url,
-                                'retailer': result.retailer.title()
-                            }
-                            webhook.send_product_notification(product_data)
+                        # Send results to Discord if webhook is configured
+                        if webhook:
+                            for result in results:
+                                product_data = {
+                                    'title': result.title,
+                                    'price': result.price,
+                                    'url': result.url,
+                                    'image_url': result.image_url,
+                                    'retailer': result.retailer.title()
+                                }
+                                webhook.send_product_notification(product_data)
+                        else:
+                            flash('Warning: Discord webhook URL not configured in settings')
 
                         scraper.last_check = datetime.utcnow()
                         db.session.commit()

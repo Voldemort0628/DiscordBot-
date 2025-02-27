@@ -2,13 +2,11 @@ import json
 import requests
 import time
 from datetime import datetime
-from config import DISCORD_WEBHOOK_URL, INFO_COLOR
+from config import INFO_COLOR
 
 class DiscordWebhook:
     def __init__(self, webhook_url=None):
-        self.webhook_url = webhook_url or DISCORD_WEBHOOK_URL
-        if not self.webhook_url:
-            raise ValueError("Discord webhook URL is required")
+        self.webhook_url = webhook_url
         self.last_webhook_time = 0
         self.webhook_rate_limit = 1  # Max 1 request per second
 
@@ -24,6 +22,10 @@ class DiscordWebhook:
         """
         Sends a formatted product notification to Discord
         """
+        if not self.webhook_url:
+            print("Warning: Discord webhook URL not configured, skipping notification")
+            return False
+
         embed = {
             "title": product_data["title"],
             "url": product_data["url"],
@@ -60,22 +62,17 @@ class DiscordWebhook:
                 sizes_text.append(size_text)
 
             embed["fields"].append({
-                "name": "ATC / QT",
+                "name": "Sizes / Stock",
                 "value": "\n".join(sizes_text),
                 "inline": False
             })
 
-            # Add quick links with proper formatting
+            # Add quick links with proper formatting for SoleAddictionsLLC
             links_text = [
-                f"[Quicktask]({product_data['url']}/cart.js) | " +
-                f"[StockX](https://stockx.com/search?s={product_data['title'].replace(' ', '%20')}) | " +
-                "[Setup](javascript:void(0))",
+                f"[Quick Purchase]({product_data['url']}/cart.js) | " +
+                f"[Market Price](https://stockx.com/search?s={product_data['title'].replace(' ', '%20')})",
                 "",  # Empty line for spacing
-                f"[Zephyr QT]({product_data['url']}) | SRC: {product_data.get('stock', 0)}",
-                "",  # Empty line for spacing
-                "[Link Change](javascript:void(0)) | " +
-                f"[Copy Link]({product_data['url']}) | " +
-                "[Setup ShopPay](javascript:void(0))"
+                f"[Product Link]({product_data['url']}) | Stock: {product_data.get('stock', 0)}",
             ]
 
             embed["fields"].append({
@@ -85,7 +82,7 @@ class DiscordWebhook:
             })
 
         payload = {
-            "username": "Product Monitor",
+            "username": "SoleAddictionsLLC Monitor",
             "avatar_url": "https://cdn.shopify.com/shopifycloud/brochure/assets/brand-assets/shopify-logo-primary-logo-456baa801ee66a0a435671082365958316831c9960c480451dd0330bcdae304f.svg",
             "embeds": [embed]
         }
