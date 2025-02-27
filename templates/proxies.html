@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-between mb-4">
+    <div class="col">
+        <h2>Proxy Management</h2>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProxyModal">
+            Add Single Proxy
+        </button>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importProxiesModal">
+            Import Proxy List
+        </button>
+    </div>
+</div>
+
+{% if proxies %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Active Proxies</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>IP:Port</th>
+                        <th>Protocol</th>
+                        <th>Country</th>
+                        <th>Success Rate</th>
+                        <th>Last Used</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for proxy in proxies %}
+                    <tr>
+                        <td>{{ proxy.ip }}:{{ proxy.port }}</td>
+                        <td>{{ proxy.protocol.upper() }}</td>
+                        <td>{{ proxy.country if proxy.country else 'N/A' }}</td>
+                        <td>
+                            {% set total = proxy.success_count + proxy.failure_count %}
+                            {% if total > 0 %}
+                                {{ "%.1f"|format(proxy.success_count / total * 100) }}%
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>{{ proxy.last_used.strftime('%Y-%m-%d %H:%M:%S') if proxy.last_used else 'Never' }}</td>
+                        <td>
+                            <span class="badge {% if proxy.enabled %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ "Active" if proxy.enabled else "Inactive" }}
+                            </span>
+                        </td>
+                        <td>
+                            <form method="POST" style="display: inline;">
+                                <input type="hidden" name="proxy_id" value="{{ proxy.id }}">
+                                <button type="submit" name="action" value="toggle" class="btn btn-sm btn-warning">
+                                    {{ "Disable" if proxy.enabled else "Enable" }}
+                                </button>
+                                <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger">
+                                    Delete
+                                </button>
+                                <button type="submit" name="action" value="test" class="btn btn-sm btn-info">
+                                    Test
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Add Single Proxy Modal -->
+<div class="modal fade" id="addProxyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Proxy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.ip.label(class="form-label") }}
+                        {{ form.ip(class="form-control") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.port.label(class="form-label") }}
+                        {{ form.port(class="form-control") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.protocol.label(class="form-label") }}
+                        {{ form.protocol(class="form-select") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.username.label(class="form-label") }}
+                        {{ form.username(class="form-control") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.password.label(class="form-label") }}
+                        {{ form.password(class="form-control") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.country.label(class="form-label") }}
+                        {{ form.country(class="form-control") }}
+                        <div class="form-text">Two-letter country code (e.g., US, GB)</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        {{ form.enabled(class="form-check-input") }}
+                        {{ form.enabled.label(class="form-check-label") }}
+                    </div>
+                    {{ form.submit(class="btn btn-primary") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Proxies Modal -->
+<div class="modal fade" id="importProxiesModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Import Proxy List</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="{{ url_for('import_proxies') }}">
+                    {{ import_form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ import_form.proxy_list.label(class="form-label") }}
+                        {{ import_form.proxy_list(class="form-control", rows=10) }}
+                        <div class="form-text">
+                            Format: ip:port:username:password or ip:port<br>
+                            Example:<br>
+                            1.2.3.4:8080:user:pass<br>
+                            5.6.7.8:8080
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        {{ import_form.protocol.label(class="form-label") }}
+                        {{ import_form.protocol(class="form-select") }}
+                    </div>
+                    {{ import_form.submit(class="btn btn-primary") }}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

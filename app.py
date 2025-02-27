@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, Store, Keyword, MonitorConfig, RetailScraper
-from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm
+from models import db, User, Store, Keyword, MonitorConfig, RetailScraper, Proxy # Added Proxy model
+from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm, ProxyForm, ProxyImportForm # Added Proxy forms
 from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
 from retail_scraper import RetailScraper as RetailScraperUtil
 import os
@@ -229,6 +229,105 @@ def retail_scraper():
     scrapers = RetailScraper.query.all()
     return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)
 
+
+@app.route('/proxies', methods=['GET', 'POST'])
+@login_required
+def manage_proxies():
+    form = ProxyForm()
+    import_form = ProxyImportForm()
+
+    if form.validate_on_submit():
+        proxy = Proxy(
+            ip=form.ip.data,
+            port=form.port.data,
+            username=form.username.data,
+            password=form.password.data,
+            protocol=form.protocol.data,
+            country=form.country.data,
+            enabled=form.enabled.data,
+            added_by=current_user.id
+        )
+        db.session.add(proxy)
+        db.session.commit()
+        flash('Proxy added successfully')
+        return redirect(url_for('manage_proxies'))
+
+    elif request.method == 'POST' and 'action' in request.form:
+        proxy_id = request.form.get('proxy_id')
+        proxy = Proxy.query.get(proxy_id)
+
+        if proxy:
+            action = request.form['action']
+            if action == 'toggle':
+                proxy.enabled = not proxy.enabled
+                db.session.commit()
+                flash(f"Proxy {'enabled' if proxy.enabled else 'disabled'}")
+            elif action == 'delete':
+                db.session.delete(proxy)
+                db.session.commit()
+                flash('Proxy deleted')
+            elif action == 'test':
+                # Test proxy connection
+                try:
+                    test_url = "http://httpbin.org/ip"
+                    proxy_url = f"{proxy.protocol}://{proxy.username}:{proxy.password}@{proxy.ip}:{proxy.port}" if proxy.username and proxy.password else f"{proxy.protocol}://{proxy.ip}:{proxy.port}"
+                    response = requests.get(test_url, proxies={
+                        'http': proxy_url,
+                        'https': proxy_url
+                    }, timeout=10)
+                    if response.status_code == 200:
+                        proxy.success_count += 1
+                        flash(f'Proxy test successful! Response: {response.json()}')
+                    else:
+                        proxy.failure_count += 1
+                        flash('Proxy test failed: Bad response', 'error')
+                except Exception as e:
+                    proxy.failure_count += 1
+                    flash(f'Proxy test failed: {str(e)}', 'error')
+                proxy.last_used = datetime.utcnow()
+                db.session.commit()
+
+        return redirect(url_for('manage_proxies'))
+
+    proxies = Proxy.query.all()
+    return render_template('proxies.html', form=form, import_form=import_form, proxies=proxies)
+
+@app.route('/import_proxies', methods=['POST'])
+@login_required
+def import_proxies():
+    form = ProxyImportForm()
+    if form.validate_on_submit():
+        proxy_list = form.proxy_list.data.strip().split('\n')
+        added = 0
+        for proxy_line in proxy_list:
+            try:
+                parts = proxy_line.strip().split(':')
+                if len(parts) == 2:  # ip:port format
+                    ip, port = parts
+                    username = password = None
+                elif len(parts) == 4:  # ip:port:username:password format
+                    ip, port, username, password = parts
+                else:
+                    continue
+
+                proxy = Proxy(
+                    ip=ip,
+                    port=int(port),
+                    username=username,
+                    password=password,
+                    protocol=form.protocol.data,
+                    enabled=True,
+                    added_by=current_user.id
+                )
+                db.session.add(proxy)
+                added += 1
+            except Exception as e:
+                print(f"Error importing proxy {proxy_line}: {e}")
+                continue
+
+        db.session.commit()
+        flash(f'Successfully imported {added} proxies')
+    return redirect(url_for('manage_proxies'))
 
 if __name__ == '__main__':
     with app.app_context():

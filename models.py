@@ -7,7 +7,7 @@ db = SQLAlchemy()
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)  # Increased from 120 to 255
+    password_hash = db.Column(db.String(255), nullable=False)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -29,15 +29,29 @@ class Keyword(db.Model):
 
 class MonitorConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    rate_limit = db.Column(db.Float, default=1.0)  # requests per second per store
-    monitor_delay = db.Column(db.Integer, default=30)  # seconds between checks
+    rate_limit = db.Column(db.Float, default=1.0)
+    monitor_delay = db.Column(db.Integer, default=30)
     max_products = db.Column(db.Integer, default=250)
 
 class RetailScraper(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    retailer = db.Column(db.String(50), nullable=False)  # 'target', 'walmart', 'bestbuy'
+    retailer = db.Column(db.String(50), nullable=False)
     keyword = db.Column(db.String(100), nullable=False)
     enabled = db.Column(db.Boolean, default=True)
     last_check = db.Column(db.DateTime)
-    check_frequency = db.Column(db.Integer, default=3600)  # seconds between checks
+    check_frequency = db.Column(db.Integer, default=3600)
+    added_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+class Proxy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ip = db.Column(db.String(45), nullable=False)  # IPv6 support
+    port = db.Column(db.Integer, nullable=False)
+    username = db.Column(db.String(100))
+    password = db.Column(db.String(100))
+    protocol = db.Column(db.String(10), default='http')  # http, https, socks5
+    country = db.Column(db.String(2))  # ISO country code
+    last_used = db.Column(db.DateTime)
+    success_count = db.Column(db.Integer, default=0)
+    failure_count = db.Column(db.Integer, default=0)
+    enabled = db.Column(db.Boolean, default=True)
     added_by = db.Column(db.Integer, db.ForeignKey('user.id'))

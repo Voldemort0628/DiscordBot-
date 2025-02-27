@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField, SelectField
-from wtforms.validators import DataRequired, URL, Optional
+from wtforms.validators import DataRequired, URL, Optional, IPAddress, NumberRange
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
@@ -37,3 +37,27 @@ class RetailScraperForm(FlaskForm):
     check_frequency = IntegerField('Check Frequency (seconds)', default=3600)
     enabled = BooleanField('Enabled', default=True)
     submit = SubmitField('Add Scraper')
+
+class ProxyForm(FlaskForm):
+    ip = StringField('IP Address', validators=[DataRequired(), IPAddress()])
+    port = IntegerField('Port', validators=[DataRequired(), NumberRange(min=1, max=65535)])
+    username = StringField('Username (Optional)', validators=[Optional()])
+    password = PasswordField('Password (Optional)', validators=[Optional()])
+    protocol = SelectField('Protocol', choices=[
+        ('http', 'HTTP'),
+        ('https', 'HTTPS'),
+        ('socks5', 'SOCKS5')
+    ], validators=[DataRequired()])
+    country = StringField('Country Code (Optional)', validators=[Optional()])
+    enabled = BooleanField('Enabled', default=True)
+    submit = SubmitField('Add Proxy')
+
+class ProxyImportForm(FlaskForm):
+    proxy_list = StringField('Proxy List (One per line, format: ip:port:user:pass or ip:port)', 
+                           validators=[DataRequired()])
+    protocol = SelectField('Protocol', choices=[
+        ('http', 'HTTP'),
+        ('https', 'HTTPS'),
+        ('socks5', 'SOCKS5')
+    ], validators=[DataRequired()])
+    submit = SubmitField('Import Proxies')

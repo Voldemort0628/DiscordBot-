@@ -1,4 +1,5 @@
 import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -18,7 +19,13 @@ class RetailScrapeResult:
 
 class RetailScraper:
     def __init__(self):
-        self.session = requests.Session()
+        self.scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'desktop': True
+            }
+        )
         self.protection_bypass = ProtectionBypass()
         self.retry_counts = {}
         self.rate_limit = 1.0
@@ -47,8 +54,8 @@ class RetailScraper:
         # Add delay to simulate human behavior
         time.sleep(self.protection_bypass.simulate_human_timing())
 
-        # Make the request
-        response = self.session.get(url, headers=headers, timeout=15)
+        # Make the request using cloudscraper
+        response = self.scraper.get(url, headers=headers, timeout=15)
         print(f"{retailer.title()} response status: {response.status_code}")
         return response
 
