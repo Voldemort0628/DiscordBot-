@@ -5,8 +5,9 @@ from typing import Dict, List
 import random
 import logging
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
+from logger_config import scraper_logger, log_scraping_error
 
-logger = logging.getLogger(__name__)
+logger = scraper_logger
 
 class RateLimiter:
     def __init__(self, rate_limit):
@@ -14,6 +15,8 @@ class RateLimiter:
         self.last_request_time = 0
         self.consecutive_429s = 0
         self.backoff_multiplier = 1.0
+        self.total_requests = 0
+        self.failed_requests = 0
 
     def __enter__(self):
         current_time = time.time()
@@ -27,9 +30,20 @@ class RateLimiter:
             # Add small random jitter (0-100ms) to prevent synchronized requests
             jitter = random.uniform(0, 0.1)
             sleep_time = actual_delay - time_passed + jitter
-            logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f}s (backoff: {self.backoff_multiplier:.2f}x)")
+            logger.debug(
+                "Rate limiting",
+                extra={
+                    'extra_fields': {
+                        'sleep_time': sleep_time,
+                        'backoff_multiplier': self.backoff_multiplier,
+                        'total_requests': self.total_requests,
+                        'failed_requests': self.failed_requests
+                    }
+                }
+            )
             time.sleep(sleep_time)
 
+        self.total_requests += 1
         self.last_request_time = time.time()
         return self
 
@@ -37,8 +51,19 @@ class RateLimiter:
         # Adjust backoff based on response
         if exc_type and "429" in str(exc_val):
             self.consecutive_429s += 1
+            self.failed_requests += 1
             self.backoff_multiplier = min(8.0, self.backoff_multiplier * 2)
-            logger.warning(f"Rate limit exceeded, increasing backoff to {self.backoff_multiplier:.2f}x")
+            logger.warning(
+                "Rate limit exceeded",
+                extra={
+                    'extra_fields': {
+                        'consecutive_429s': self.consecutive_429s,
+                        'backoff_multiplier': self.backoff_multiplier,
+                        'total_requests': self.total_requests,
+                        'failed_requests': self.failed_requests
+                    }
+                }
+            )
         else:
             self.consecutive_429s = max(0, self.consecutive_429s - 1)
             if self.consecutive_429s == 0:
@@ -57,6 +82,17 @@ class ShopifyMonitor:
         self.failed_stores = set()
         self.retry_counts = {}
         self.last_request_time = time.time()
+        self.store_stats = {}
+
+    def _init_store_stats(self, store_url: str):
+        """Initialize or reset statistics for a store"""
+        self.store_stats[store_url] = {
+            'total_requests': 0,
+            'failed_requests': 0,
+            'last_success': None,
+            'last_failure': None,
+            'errors': {}
+        }
 
     def get_product_variants(self, product_url):
         """Fetch specific product variants from a Shopify product URL"""
@@ -77,9 +113,12 @@ class ShopifyMonitor:
                         product_data = response.json().get('product', {})
                         break
                 except requests.exceptions.RequestException as e:
+                    log_scraping_error(product_url, e, {
+                        'attempt': attempt + 1,
+                        'max_retries': max_retries
+                    })
                     if attempt == max_retries - 1:
                         raise
-                    logger.warning(f"Retry {attempt + 1}/{max_retries} for {product_url}: {e}")
                     time.sleep(1 * (attempt + 1))
 
             if not product_data:
@@ -103,14 +142,17 @@ class ShopifyMonitor:
             }
 
         except Exception as e:
-            logger.error(f"Error fetching variants from {product_url}: {e}")
+            log_scraping_error(product_url, e)
             return {'variants': []}
 
     def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """
-        Fetches products from a Shopify store matching given keywords
-        Implements exponential backoff for failed stores
-        """
+        """Fetches products from a Shopify store matching given keywords"""
+        if store_url not in self.store_stats:
+            self._init_store_stats(store_url)
+
+        stats = self.store_stats[store_url]
+        stats['total_requests'] += 1
+
         if store_url in self.failed_stores:
             retry_count = self.retry_counts.get(store_url, 0)
             backoff = min(300, 2 ** retry_count)  # Max 5 minutes backoff
@@ -142,13 +184,28 @@ class ShopifyMonitor:
                     if processed_product:
                         matching_products.append(processed_product)
 
-            # Reset failed status on success
+            # Update success statistics
+            stats['last_success'] = time.time()
             self.failed_stores.discard(store_url)
             self.retry_counts.pop(store_url, None)
             return matching_products
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching products from {store_url}: {e}")
+            # Update failure statistics
+            stats['failed_requests'] += 1
+            stats['last_failure'] = time.time()
+            error_type = type(e).__name__
+            stats['errors'][error_type] = stats['errors'].get(error_type, 0) + 1
+
+            log_scraping_error(store_url, e, {
+                'store_stats': stats,
+                'rate_limiter_stats': {
+                    'total_requests': self.rate_limiter.total_requests,
+                    'failed_requests': self.rate_limiter.failed_requests,
+                    'backoff_multiplier': self.rate_limiter.backoff_multiplier
+                }
+            })
+
             if isinstance(e, (requests.exceptions.ConnectionError,
                             requests.exceptions.Timeout,
                             requests.exceptions.SSLError)):
@@ -182,5 +239,8 @@ class ShopifyMonitor:
                 "full_size_run": "Bot 1 FSR" if stock > 0 else "OOS"
             }
         except Exception as e:
-            logger.error(f"Error processing product {product.get('title', 'Unknown')}: {e}")
+            log_scraping_error(store_url, e, {
+                'product_title': product.get('title', 'Unknown'),
+                'error_location': '_process_product'
+            })
             return {}

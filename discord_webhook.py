@@ -1,15 +1,15 @@
 import json
 import requests
 import time
-import logging
 from datetime import datetime
 from config import INFO_COLOR
 import random
 import asyncio
 from collections import deque
 from typing import Dict, Optional
+from logger_config import webhook_logger, log_webhook_error
 
-logger = logging.getLogger(__name__)
+logger = webhook_logger
 
 class DiscordWebhook:
     def __init__(self, webhook_url):
@@ -59,7 +59,7 @@ class DiscordWebhook:
             response.raise_for_status()
             return True
         except Exception as e:
-            logger.error(f"Error sending Discord webhook: {e}")
+            log_webhook_error(self.webhook_url, e)
             return False
 
 class RateLimitedDiscordWebhook:
@@ -78,6 +78,12 @@ class RateLimitedDiscordWebhook:
         self.retries = {}  # Track retry attempts per message
         self.max_retries = 5
         self.max_queue_size = 1000
+        self.webhook_stats = {
+            'total_sent': 0,
+            'failed_attempts': 0,
+            'rate_limits_hit': 0,
+            'current_queue_size': 0
+        }
 
     async def process_queue(self):
         """Background worker to process queued messages"""
@@ -88,12 +94,20 @@ class RateLimitedDiscordWebhook:
         try:
             while self.message_queue:
                 current_time = time.time()
+                self.webhook_stats['current_queue_size'] = len(self.message_queue)
 
                 # Check rate limits
                 if self.rate_limit['remaining'] <= 0:
                     wait_time = max(0, self.rate_limit['reset_after'] - current_time)
                     if wait_time > 0:
-                        logger.info(f"Rate limit reached, waiting {wait_time:.2f}s")
+                        logger.info(
+                            "Rate limit reached, waiting",
+                            extra={'extra_fields': {
+                                'wait_time': wait_time,
+                                'queue_size': len(self.message_queue),
+                                'stats': self.webhook_stats
+                            }}
+                        )
                         await asyncio.sleep(wait_time)
                         continue
 
@@ -104,17 +118,35 @@ class RateLimitedDiscordWebhook:
                 if not success:
                     retry_count = self.retries.get(id(payload), 0) + 1
                     if retry_count <= self.max_retries:
-                        logger.warning(f"Retrying webhook (attempt {retry_count}/{self.max_retries})")
+                        logger.warning(
+                            "Retrying webhook",
+                            extra={'extra_fields': {
+                                'attempt': retry_count,
+                                'max_retries': self.max_retries,
+                                'queue_size': len(self.message_queue)
+                            }}
+                        )
                         self.retries[id(payload)] = retry_count
                         self.message_queue.append(payload)
+                        self.webhook_stats['failed_attempts'] += 1
                     else:
-                        logger.error(f"Failed to send webhook after {self.max_retries} attempts")
+                        logger.error(
+                            "Failed to send webhook after maximum retries",
+                            extra={'extra_fields': {
+                                'stats': self.webhook_stats
+                            }}
+                        )
 
                 # Adaptive delay between requests
                 elapsed = time.time() - self.last_request_time
                 if elapsed < (self.rate_limit['window'] / self.rate_limit['limit']):
                     await asyncio.sleep(0.1)  # Small delay to prevent bursts
 
+        except Exception as e:
+            log_webhook_error(self.webhook_url, e, {
+                'queue_size': len(self.message_queue),
+                'stats': self.webhook_stats
+            })
         finally:
             self.processing = False
 
@@ -137,20 +169,29 @@ class RateLimitedDiscordWebhook:
             if response.status_code == 429:
                 retry_after = float(response.headers.get('Retry-After', 5))
                 self.rate_limit['reset_after'] = time.time() + retry_after
+                self.webhook_stats['rate_limits_hit'] += 1
                 return False
 
             response.raise_for_status()
+            self.webhook_stats['total_sent'] += 1
             return True
 
         except Exception as e:
-            logger.error(f"Error sending webhook: {e}")
+            log_webhook_error(
+                self.webhook_url,
+                e,
+                {'stats': self.webhook_stats}
+            )
             return False
 
     def send_product_notification(self, product: Dict) -> bool:
         """Queue a product notification for sending"""
         try:
             if len(self.message_queue) >= self.max_queue_size:
-                logger.warning("Webhook queue full, dropping oldest message")
+                logger.warning(
+                    "Webhook queue full, dropping oldest message",
+                    extra={'extra_fields': {'queue_size': len(self.message_queue)}}
+                )
                 self.message_queue.popleft()  # Remove oldest message
 
             embed = {
@@ -181,11 +222,9 @@ class RateLimitedDiscordWebhook:
             if product.get("sizes"):
                 sizes_text = []
                 for size, qty in product["sizes"].items():
-                    base_url = product["url"]
-                    variant_id = product["variants"].get(size, "")
                     size_text = f"• {size} | QT [{qty}]"
-                    if variant_id:
-                        cart_url = f"{base_url}?variant={variant_id}"
+                    if product["variants"].get(size):
+                        cart_url = f"{product['url']}?variant={product['variants'][size]}"
                         size_text = f"[{size_text}]({cart_url})"
                     sizes_text.append(size_text)
 
@@ -202,11 +241,25 @@ class RateLimitedDiscordWebhook:
             }
 
             self.message_queue.append(payload)
+            logger.debug(
+                "Added notification to queue",
+                extra={'extra_fields': {
+                    'queue_size': len(self.message_queue),
+                    'product_title': product['title']
+                }}
+            )
 
             # Start queue processing if not already running
             asyncio.create_task(self.process_queue())
             return True
 
         except Exception as e:
-            logger.error(f"Error queuing webhook: {e}")
+            log_webhook_error(
+                self.webhook_url,
+                e,
+                {
+                    'product_title': product.get('title', 'Unknown'),
+                    'queue_size': len(self.message_queue)
+                }
+            )
             return False
