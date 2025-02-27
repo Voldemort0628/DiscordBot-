@@ -41,43 +41,62 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
-
-    # Initialize database within app context
-    with app.app_context():
-        db.create_all()
-        # Create admin user if no users exist
-        if not User.query.first():
-            admin = User(username='admin')
-            admin.set_password('admin')
-            db.session.add(admin)
-            db.session.commit()
+        try:
+            return User.query.get(int(user_id))
+        except Exception as e:
+            print(f"Error loading user {user_id}: {e}")
+            return None
 
     @app.route('/')
     @login_required
     def dashboard():
-        stores = Store.query.filter_by(user_id=current_user.id).all()
-        keywords = Keyword.query.filter_by(user_id=current_user.id).all()
-        config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
-        monitor_running = is_monitor_running(current_user.id)
-        return render_template('dashboard.html', 
-                             stores=stores, 
-                             keywords=keywords, 
-                             config=config,
-                             monitor_running=monitor_running)
+        try:
+            stores = Store.query.filter_by(user_id=current_user.id).all()
+            keywords = Keyword.query.filter_by(user_id=current_user.id).all()
+            config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
+            monitor_running = is_monitor_running(current_user.id)
+            return render_template('dashboard.html', 
+                                stores=stores, 
+                                keywords=keywords, 
+                                config=config,
+                                monitor_running=monitor_running)
+        except Exception as e:
+            print(f"Dashboard error: {e}")
+            flash('Error loading dashboard. Please try again.')
+            return redirect(url_for('login'))
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
+        print("Processing login request")  # Debug log
         if current_user.is_authenticated:
             return redirect(url_for('dashboard'))
+
         form = LoginForm()
         if form.validate_on_submit():
-            user = User.query.filter_by(username=form.username.data).first()
-            if user and user.check_password(form.password.data):
-                login_user(user)
-                next_page = request.args.get('next')
-                return redirect(next_page if next_page else url_for('dashboard'))
-            flash('Invalid username or password')
+            try:
+                print(f"Attempting login for user: {form.username.data}")  # Debug log
+                user = User.query.filter_by(username=form.username.data).first()
+
+                if user is None:
+                    print(f"No user found with username: {form.username.data}")
+                    flash('Invalid username or password')
+                    return render_template('login.html', form=form)
+
+                print(f"User found: {user.username}, verifying password")  # Debug log
+                if user.check_password(form.password.data):
+                    print(f"Password verified for user: {user.username}")  # Debug log
+                    login_user(user)
+                    next_page = request.args.get('next')
+                    print(f"Redirecting to: {next_page or 'dashboard'}")  # Debug log
+                    return redirect(next_page if next_page else url_for('dashboard'))
+                else:
+                    print(f"Invalid password for user: {user.username}")  # Debug log
+                    flash('Invalid username or password')
+            except Exception as e:
+                print(f"Login error: {e}")
+                db.session.rollback()
+                flash('An error occurred during login. Please try again.')
+
         return render_template('login.html', form=form)
 
     @app.route('/logout')
@@ -90,6 +109,7 @@ def create_app():
     def register():
         if current_user.is_authenticated:
             return redirect(url_for('dashboard'))
+
         form = RegistrationForm()
         if form.validate_on_submit():
             try:
@@ -97,15 +117,17 @@ def create_app():
                 user.set_password(form.password.data)
                 db.session.add(user)
                 db.session.commit()
+                print(f"User registered successfully: {user.username}")  # Debug log
                 flash('Registration successful! Please login.')
                 return redirect(url_for('login'))
             except Exception as e:
                 db.session.rollback()
-                flash('Error during registration. Please try again.')
                 print(f"Registration error: {e}")
+                flash('Error during registration. Please try again.')
                 return redirect(url_for('register'))
-        return render_template('register.html', form=form)
 
+        return render_template('register.html', form=form)
+        
     @app.route('/stores', methods=['GET', 'POST'])
     @login_required
     def manage_stores():

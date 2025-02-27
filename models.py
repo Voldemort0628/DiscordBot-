@@ -8,8 +8,8 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    discord_webhook_url = db.Column(db.String(500))  # Add webhook URL to user model
-    enabled = db.Column(db.Boolean, default=True)  # Add enabled flag for user
+    discord_webhook_url = db.Column(db.String(500))
+    enabled = db.Column(db.Boolean, default=True)
 
     # Relationships
     stores = db.relationship('Store', backref='user', lazy=True)
@@ -18,9 +18,13 @@ class User(UserMixin, db.Model):
     proxies = db.relationship('Proxy', backref='user', lazy=True)
 
     def set_password(self, password):
+        if not password:
+            raise ValueError("Password cannot be empty")
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
+        if not password or not self.password_hash:
+            return False
         return check_password_hash(self.password_hash, password)
 
 class Store(db.Model):
@@ -44,7 +48,7 @@ class MonitorConfig(db.Model):
     rate_limit = db.Column(db.Float, default=1.0)
     monitor_delay = db.Column(db.Integer, default=30)
     max_products = db.Column(db.Integer, default=250)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # Add user relationship
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 class RetailScraper(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -57,12 +61,12 @@ class RetailScraper(db.Model):
 
 class Proxy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    ip = db.Column(db.String(45), nullable=False)  # IPv6 support
+    ip = db.Column(db.String(45), nullable=False)
     port = db.Column(db.Integer, nullable=False)
     username = db.Column(db.String(100))
     password = db.Column(db.String(100))
-    protocol = db.Column(db.String(10), default='http')  # http, https, socks5
-    country = db.Column(db.String(2))  # ISO country code
+    protocol = db.Column(db.String(10), default='http')
+    country = db.Column(db.String(2))
     last_used = db.Column(db.DateTime)
     success_count = db.Column(db.Integer, default=0)
     failure_count = db.Column(db.Integer, default=0)
