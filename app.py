@@ -199,27 +199,30 @@ def retail_scraper():
                 retail_scraper = RetailScraperUtil()
                 results = []
 
-                if scraper.retailer == 'target':
-                    results = retail_scraper.scrape_target(scraper.keyword)
-                elif scraper.retailer == 'walmart':
-                    results = retail_scraper.scrape_walmart(scraper.keyword)
-                elif scraper.retailer == 'bestbuy':
-                    results = retail_scraper.scrape_bestbuy(scraper.keyword)
+                try:
+                    if scraper.retailer == 'target':
+                        results = retail_scraper.scrape_target(scraper.keyword)
+                    elif scraper.retailer == 'walmart':
+                        results = retail_scraper.scrape_walmart(scraper.keyword)
+                    elif scraper.retailer == 'bestbuy':
+                        results = retail_scraper.scrape_bestbuy(scraper.keyword)
 
-                # Send results to Discord
-                for result in results:
-                    product_data = {
-                        'title': result.title,
-                        'price': result.price,
-                        'url': result.url,
-                        'image_url': result.image_url,
-                        'retailer': result.retailer.title()
-                    }
-                    webhook.send_product_notification(product_data) #Assumes DiscordWebhook has this method
+                    # Send results to Discord
+                    for result in results:
+                        product_data = {
+                            'title': result.title,
+                            'price': result.price,
+                            'url': result.url,
+                            'image_url': result.image_url,
+                            'retailer': result.retailer.title()
+                        }
+                        webhook.send_product_notification(product_data)
 
-                scraper.last_check = datetime.utcnow()
-                db.session.commit()
-                flash(f'Scrape completed - Found {len(results)} items')
+                    scraper.last_check = datetime.utcnow()
+                    db.session.commit()
+                    flash(f'Scrape completed - Found {len(results)} items')
+                except Exception as e:
+                    flash(f'Error during scraping: {str(e)}', 'error')
 
     scrapers = RetailScraper.query.all()
     return render_template('retail_scraper.html', form=form, scrapers=scrapers, results=results)
