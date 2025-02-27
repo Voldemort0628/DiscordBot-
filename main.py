@@ -55,6 +55,7 @@ async def main():
             if monitor.failed_stores:
                 print("- Failed stores:", ", ".join(monitor.failed_stores))
             print(f"- Total products tracked: {len(seen_products)}")
+            print(f"- Active stores: {len(SHOPIFY_STORES) - len(monitor.failed_stores)}")
 
             await asyncio.sleep(MONITOR_DELAY)
 

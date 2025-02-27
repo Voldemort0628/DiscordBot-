@@ -74,6 +74,7 @@ class ShopifyMonitor:
         try:
             variants = product.get("variants", [])
             sizes = {}
+            variant_ids = {}
             stock = 0
 
             for variant in variants:
@@ -82,6 +83,7 @@ class ShopifyMonitor:
                     inventory = variant.get("inventory_quantity", 1)
                     stock += inventory
                     sizes[size] = inventory
+                    variant_ids[size] = str(variant.get("id", ""))
 
             return {
                 "title": product["title"],
@@ -90,6 +92,7 @@ class ShopifyMonitor:
                 "image_url": product.get("images", [{}])[0].get("src", ""),
                 "stock": stock,
                 "sizes": sizes,
+                "variants": variant_ids,
                 "full_size_run": "Bot 1 FSR" if stock > 0 else "OOS"
             }
         except Exception as e:
