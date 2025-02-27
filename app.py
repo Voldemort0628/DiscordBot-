@@ -41,9 +41,9 @@ def is_monitor_running():
 @app.route('/')
 @login_required
 def dashboard():
-    stores = Store.query.all()
-    keywords = Keyword.query.all()
-    config = MonitorConfig.query.first()
+    stores = Store.query.filter_by(user_id=current_user.id).all()
+    keywords = Keyword.query.filter_by(user_id=current_user.id).all()
+    config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
     monitor_running = is_monitor_running()
     return render_template('dashboard.html', 
                          stores=stores, 
@@ -75,31 +75,18 @@ def logout():
 def manage_stores():
     form = StoreForm()
     if form.validate_on_submit():
-        store = Store(url=form.url.data, enabled=form.enabled.data, added_by=current_user.id)
+        store = Store(
+            url=form.url.data,
+            enabled=form.enabled.data,
+            user_id=current_user.id
+        )
         db.session.add(store)
         db.session.commit()
         flash('Store added successfully')
         return redirect(url_for('manage_stores'))
 
-    # Handle toggle and delete actions
-    elif request.method == 'POST' and 'action' in request.form:
-        store_id = request.form.get('store_id')
-        store = Store.query.get(store_id)
-
-        if store:
-            action = request.form['action']
-            if action == 'toggle':
-                store.enabled = not store.enabled
-                db.session.commit()
-                flash(f"Store {'enabled' if store.enabled else 'disabled'}")
-            elif action == 'delete':
-                db.session.delete(store)
-                db.session.commit()
-                flash('Store deleted')
-
-        return redirect(url_for('manage_stores'))
-
-    stores = Store.query.all()
+    # Show only user's stores
+    stores = Store.query.filter_by(user_id=current_user.id).all()
     return render_template('stores.html', form=form, stores=stores)
 
 @app.route('/keywords', methods=['GET', 'POST'])
@@ -107,45 +94,34 @@ def manage_stores():
 def manage_keywords():
     form = KeywordForm()
     if form.validate_on_submit():
-        keyword = Keyword(word=form.word.data, enabled=form.enabled.data, added_by=current_user.id)
+        keyword = Keyword(
+            word=form.word.data,
+            enabled=form.enabled.data,
+            user_id=current_user.id
+        )
         db.session.add(keyword)
         db.session.commit()
         flash('Keyword added successfully')
         return redirect(url_for('manage_keywords'))
 
-    # Handle toggle and delete actions
-    elif request.method == 'POST' and 'action' in request.form:
-        keyword_id = request.form.get('keyword_id')
-        keyword = Keyword.query.get(keyword_id)
-
-        if keyword:
-            action = request.form['action']
-            if action == 'toggle':
-                keyword.enabled = not keyword.enabled
-                db.session.commit()
-                flash(f"Keyword {'enabled' if keyword.enabled else 'disabled'}")
-            elif action == 'delete':
-                db.session.delete(keyword)
-                db.session.commit()
-                flash('Keyword deleted')
-
-        return redirect(url_for('manage_keywords'))
-
-    keywords = Keyword.query.all()
+    # Show only user's keywords
+    keywords = Keyword.query.filter_by(user_id=current_user.id).all()
     return render_template('keywords.html', form=form, keywords=keywords)
 
 @app.route('/config', methods=['GET', 'POST'])
 @login_required
 def manage_config():
-    config = MonitorConfig.query.first()
+    # Get or create user-specific config
+    config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
     if not config:
-        config = MonitorConfig()
+        config = MonitorConfig(user_id=current_user.id)
         db.session.add(config)
         db.session.commit()
 
     form = ConfigForm(obj=config)
     if form.validate_on_submit():
         form.populate_obj(config)
+        current_user.discord_webhook_url = form.discord_webhook_url.data
         db.session.commit()
         flash('Configuration updated successfully')
 
@@ -155,6 +131,9 @@ def manage_config():
             flash('Monitor restarted with new configuration')
 
         return redirect(url_for('dashboard'))
+
+    # Pre-populate Discord webhook URL from user model
+    form.discord_webhook_url.data = current_user.discord_webhook_url
     return render_template('config.html', form=form)
 
 @app.route('/variants', methods=['GET', 'POST'])
@@ -213,7 +192,7 @@ def retail_scraper():
     results = []
 
     # Get user's webhook configuration
-    config = MonitorConfig.query.first()
+    config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
     webhook = DiscordWebhook(webhook_url=config.discord_webhook_url) if config and config.discord_webhook_url else None
 
     if form.validate_on_submit():
@@ -403,14 +382,14 @@ if __name__ == '__main__':
         # Populate default stores if none exist
         if not Store.query.first():
             for store_url in SHOPIFY_STORES:
-                store = Store(url=store_url, enabled=True, added_by=1)  # admin user id is 1
+                store = Store(url=store_url, enabled=True, added_by=1, user_id=1)  # admin user id is 1
                 db.session.add(store)
             db.session.commit()
 
         # Populate default keywords if none exist
         if not Keyword.query.first():
             for word in DEFAULT_KEYWORDS:
-                keyword = Keyword(word=word, enabled=True, added_by=1)  # admin user id is 1
+                keyword = Keyword(word=word, enabled=True, added_by=1, user_id=1)  # admin user id is 1
                 db.session.add(keyword)
             db.session.commit()
 

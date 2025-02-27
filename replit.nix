@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.geckodriver
     pkgs.chromium
     pkgs.playwright-driver
     pkgs.gitFull

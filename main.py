@@ -6,9 +6,8 @@ import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
 from config import MONITOR_DELAY
-from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
 from flask import Flask
-from models import db, Store, Keyword, MonitorConfig
+from models import db, User, Store, Keyword, MonitorConfig
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
@@ -16,14 +15,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
-                       webhook: DiscordWebhook, seen_products: Set[str]):
+                       webhook: DiscordWebhook, seen_products: Set[str], user_id: int):
     """Monitors a single store for products"""
     try:
         products = monitor.fetch_products(store_url, keywords)
         new_products = 0
 
         for product in products:
-            product_identifier = f"{store_url}-{product['title']}-{product['price']}"
+            product_identifier = f"{store_url}-{product['title']}-{product['price']}-{user_id}"
 
             if product_identifier not in seen_products:
                 print(f"New product found on {store_url}: {product['title']}")
@@ -39,52 +38,53 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
 async def main():
     try:
         with app.app_context():
-            # Get configuration from database
-            config = MonitorConfig.query.first()
-            if not config:
-                config = MonitorConfig()
-                db.session.add(config)
-                db.session.commit()
+            # Get all active users
+            active_users = User.query.filter_by(enabled=True).all()
 
-            # Initialize monitor and webhook with configuration
-            monitor = ShopifyMonitor(rate_limit=config.rate_limit)
-            webhook = DiscordWebhook(webhook_url=config.discord_webhook_url)
+            # Initialize shared monitor
+            monitor = ShopifyMonitor(rate_limit=1.0)  # Use default rate limit
             seen_products = set()
 
-            print("Starting monitor with configuration:")
-            print(f"- Rate limit: {config.rate_limit} req/s")
-            print(f"- Monitor delay: {config.monitor_delay} seconds")
-            print(f"- Max products: {config.max_products}")
-            print(f"- Discord webhook: {'Configured' if config.discord_webhook_url else 'Not configured'}")
-            print("\nPress Ctrl+C to stop monitoring\n")
+            print(f"Starting monitor for {len(active_users)} active users")
 
             while True:
-                # Get active stores and keywords from database
-                active_stores = [store.url for store in Store.query.filter_by(enabled=True).all()]
-                active_keywords = [kw.word for kw in Keyword.query.filter_by(enabled=True).all()]
+                for user in active_users:
+                    # Get user-specific configuration
+                    config = MonitorConfig.query.filter_by(user_id=user.id).first()
+                    if not config:
+                        continue
 
-                print(f"Starting monitor for {len(active_stores)} stores")
-                print(f"Monitoring for keywords: {', '.join(active_keywords)}")
+                    # Initialize user's webhook
+                    webhook = DiscordWebhook(webhook_url=user.discord_webhook_url)
 
-                tasks = []
-                for store_url in active_stores:
-                    task = asyncio.create_task(
-                        monitor_store(store_url, active_keywords, monitor, webhook, seen_products)
-                    )
-                    tasks.append(task)
+                    # Get user's active stores and keywords
+                    active_stores = [store.url for store in Store.query.filter_by(user_id=user.id, enabled=True).all()]
+                    active_keywords = [kw.word for kw in Keyword.query.filter_by(user_id=user.id, enabled=True).all()]
 
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                total_new_products = sum(r for r in results if isinstance(r, int))
+                    print(f"\nProcessing user {user.username}:")
+                    print(f"- Active stores: {len(active_stores)}")
+                    print(f"- Active keywords: {', '.join(active_keywords)}")
 
-                print(f"\nCompleted monitoring cycle:")
-                print(f"- New products found: {total_new_products}")
-                print(f"- Stores with issues: {len(monitor.failed_stores)}")
-                if monitor.failed_stores:
-                    print("- Failed stores:", ", ".join(monitor.failed_stores))
-                print(f"- Total products tracked: {len(seen_products)}")
-                print(f"- Active stores: {len(active_stores)}")
+                    tasks = []
+                    for store_url in active_stores:
+                        task = asyncio.create_task(
+                            monitor_store(store_url, active_keywords, monitor, webhook, seen_products, user.id)
+                        )
+                        tasks.append(task)
 
-                await asyncio.sleep(config.monitor_delay)
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    total_new_products = sum(r for r in results if isinstance(r, int))
+
+                    print(f"- New products found: {total_new_products}")
+                    if monitor.failed_stores:
+                        print("- Failed stores:", ", ".join(monitor.failed_stores))
+
+                # Use the shortest monitor delay among all users
+                min_delay = min(
+                    (c.monitor_delay for c in MonitorConfig.query.all()),
+                    default=30
+                )
+                await asyncio.sleep(min_delay)
 
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user")
