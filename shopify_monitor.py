@@ -2,547 +2,325 @@ import asyncio
 import aiohttp
 import json
 import time
-import requests
-import random
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
 from collections import deque
 import logging
-import socket
 from urllib.parse import urlparse
-from requests.exceptions import RequestException
-from requests.adapters import Retry, HTTPAdapter
+from aiohttp import ClientTimeout, TCPConnector
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
-from logger_config import scraper_logger, log_scraping_error
-from proxy_manager import ProxyManager
+from logger_config import scraper_logger
 
 logger = scraper_logger
 
+class DomainRateLimiter:
+    """Per-domain rate limiting with dynamic backoff"""
+    def __init__(self, default_rate: float = 1.0):
+        self.default_rate = default_rate
+        self.domain_rates: Dict[str, float] = {}
+        self.last_request: Dict[str, float] = {}
+        self.backoff_multiplier: Dict[str, float] = {}
+
+    def get_delay(self, domain: str) -> float:
+        """Calculate delay needed for rate limiting"""
+        current_time = time.time()
+        rate = self.domain_rates.get(domain, self.default_rate)
+        last_time = self.last_request.get(domain, 0)
+        multiplier = self.backoff_multiplier.get(domain, 1.0)
+
+        delay = max(0, (1.0 / rate) * multiplier - (current_time - last_time))
+        return delay
+
+    async def acquire(self, domain: str):
+        """Wait for rate limit slot"""
+        delay = self.get_delay(domain)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        self.last_request[domain] = time.time()
+
+    def increase_backoff(self, domain: str):
+        """Increase backoff multiplier after failures"""
+        self.backoff_multiplier[domain] = min(8.0, 
+            self.backoff_multiplier.get(domain, 1.0) * 2)
+
+    def decrease_backoff(self, domain: str):
+        """Decrease backoff multiplier after success"""
+        if domain in self.backoff_multiplier:
+            self.backoff_multiplier[domain] = max(1.0, 
+                self.backoff_multiplier[domain] * 0.75)
+
 class ProxyManager:
-    def __init__(self):
-        self.proxies: List[str] = []
-        self.failed_proxies: Set[str] = set()
-        self.proxy_stats: Dict[str, Dict] = {}
-        self.current_proxy_index = 0
+    """Advanced proxy management with health tracking"""
+    def __init__(self, proxies: Optional[List[str]] = None):
+        self.proxies = proxies or []
+        self.health_scores: Dict[str, float] = {}
+        self.error_counts: Dict[str, int] = {}
+        self.last_used: Dict[str, float] = {}
+        self.in_use: Set[str] = set()
 
-    def add_proxies_from_list(self, proxy_list: List[str]):
-        self.proxies.extend(proxy_list)
-
-    def get_next_proxy(self) -> Optional[str]:
-        """Get next working proxy with stats tracking"""
+    async def get_proxy(self) -> Optional[str]:
+        """Get best available proxy"""
         if not self.proxies:
             return None
 
-        working_proxies = [p for p in self.proxies if p not in self.failed_proxies]
-        if not working_proxies:
-            # Reset failed proxies if all are failed
-            self.failed_proxies.clear()
-            working_proxies = self.proxies
+        available = [p for p in self.proxies if p not in self.in_use]
+        if not available:
+            return None
 
-        proxy = working_proxies[self.current_proxy_index]
-        self.current_proxy_index = (self.current_proxy_index + 1) % len(working_proxies)
-        if proxy not in self.proxy_stats:
-            self.proxy_stats[proxy] = {'success': 0, 'failures': 0}
+        # Sort by health score and last used time
+        proxy = max(available, key=lambda p: (
+            self.health_scores.get(p, 0.5),
+            -self.last_used.get(p, 0)
+        ))
+
+        self.in_use.add(proxy)
+        self.last_used[proxy] = time.time()
         return proxy
 
-    def mark_proxy_failed(self, proxy: str):
-        """Mark a proxy as failed"""
-        if proxy:
-            self.failed_proxies.add(proxy)
-            if proxy in self.proxy_stats:
-                self.proxy_stats[proxy]['failures'] += 1
+    def release_proxy(self, proxy: str, success: bool):
+        """Release proxy and update health metrics"""
+        if proxy not in self.proxies:
+            return
 
-    def mark_proxy_success(self, proxy: str):
-        """Mark a proxy request as successful"""
-        if proxy and proxy in self.proxy_stats:
-            self.proxy_stats[proxy]['success'] += 1
-            self.failed_proxies.discard(proxy)
+        self.in_use.discard(proxy)
+        score = self.health_scores.get(proxy, 0.5)
 
-    def get_stats(self):
-        return self.proxy_stats
-
-
-class SessionManager:
-    def __init__(self, proxy_manager: Optional['ProxyManager'] = None):
-        self.proxy_manager = proxy_manager
-        self.sessions: Dict[str, aiohttp.ClientSession] = {}
-        self._proxy_url: Optional[str] = None
-
-    async def get_session(self, store_url: str) -> aiohttp.ClientSession:
-        """Get or create a session for a store with proxy rotation"""
-        if store_url not in self.sessions or self.sessions[store_url].closed:
-            if self.proxy_manager:
-                self._proxy_url = self.proxy_manager.get_next_proxy()
-
-            timeout = aiohttp.ClientTimeout(total=10, connect=5)
-            connector = aiohttp.TCPConnector(ssl=False)
-
-            self.sessions[store_url] = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=connector,
-                headers={
-                    'User-Agent': USER_AGENT,
-                    'Accept': 'application/json',
-                    'Accept-Encoding': 'gzip, deflate',
-                },
-                proxy=self._proxy_url
-            )
-        return self.sessions[store_url]
-
-    def mark_proxy_failed(self):
-        """Mark current proxy as failed"""
-        if self.proxy_manager and self._proxy_url:
-            self.proxy_manager.mark_proxy_failed(self._proxy_url)
-
-    def mark_proxy_success(self):
-        """Mark current proxy as successful"""
-        if self.proxy_manager and self._proxy_url:
-            self.proxy_manager.mark_proxy_success(self._proxy_url)
-
-    async def close_all(self):
-        """Close all sessions"""
-        for session in self.sessions.values():
-            if not session.closed:
-                await session.close()
-        self.sessions.clear()
+        if success:
+            self.health_scores[proxy] = min(1.0, score + 0.1)
+            self.error_counts[proxy] = 0
+        else:
+            self.health_scores[proxy] = max(0.0, score - 0.2)
+            self.error_counts[proxy] = self.error_counts.get(proxy, 0) + 1
 
 class ProductTracker:
+    """Track product changes with deduplication"""
     def __init__(self, ttl: int = 3600):
-        self.seen_products = {}
+        self.seen_products: Dict[str, Dict] = {}
         self.ttl = ttl
-        self.stock_changes = deque(maxlen=1000)  # Track recent stock changes
+        self.changes = deque(maxlen=1000)
 
-    def is_new_or_changed(self, identifier: str, current_stock: int) -> bool:
-        """Check if product is new or stock has changed"""
+    def is_new_or_changed(self, product: Dict) -> bool:
+        """Check if product is new or has changed"""
         current_time = time.time()
+        product_id = str(product.get('id'))
 
         # Clean expired entries
-        self.seen_products = {k: v for k, v in self.seen_products.items()
-                            if current_time - v['timestamp'] <= self.ttl}
+        self.seen_products = {
+            k: v for k, v in self.seen_products.items()
+            if current_time - v['timestamp'] <= self.ttl
+        }
 
-        if identifier not in self.seen_products:
-            self.seen_products[identifier] = {
+        # Generate hash of important fields
+        state_hash = hash(json.dumps({
+            'title': product.get('title'),
+            'price': product.get('price'),
+            'available': product.get('available'),
+            'variants': product.get('variants', [])
+        }, sort_keys=True))
+
+        if product_id not in self.seen_products:
+            self.seen_products[product_id] = {
                 'timestamp': current_time,
-                'stock': current_stock
+                'hash': state_hash
             }
             return True
 
-        previous = self.seen_products[identifier]
-        if previous['stock'] != current_stock:
-            # Track stock change
-            self.stock_changes.append({
-                'identifier': identifier,
-                'previous': previous['stock'],
-                'current': current_stock,
-                'timestamp': current_time
+        previous = self.seen_products[product_id]
+        if previous['hash'] != state_hash:
+            self.changes.append({
+                'product_id': product_id,
+                'timestamp': current_time,
+                'previous_hash': previous['hash'],
+                'new_hash': state_hash
             })
-            previous['stock'] = current_stock
-            previous['timestamp'] = current_time
+            previous.update({
+                'timestamp': current_time,
+                'hash': state_hash
+            })
             return True
 
         return False
 
 class ShopifyMonitor:
-    def __init__(self, rate_limit: float = 0.5, proxy_list: Optional[List[str]] = None):
-        self.rate_limit = rate_limit
-        self.proxy_manager = ProxyManager()
-        if proxy_list:
-            self.proxy_manager.add_proxies_from_list(proxy_list)
-        self.session_manager = SessionManager(self.proxy_manager)
+    """Advanced Shopify product monitor"""
+    def __init__(self, 
+                 rate_limit: float = 1.0,
+                 proxies: Optional[List[str]] = None,
+                 max_concurrent: int = 3):
+        self.rate_limiter = DomainRateLimiter(rate_limit)
+        self.proxy_manager = ProxyManager(proxies)
         self.product_tracker = ProductTracker()
-        self.store_stats = {}
-        self.last_request_times: Dict[str, float] = {}
-        self.request_windows: Dict[str, deque] = {}
-        self.max_requests_per_window = 25
-        self.window_size = 30  # 30 second window
-        self.failed_stores = {}  # Store URL -> {last_failure: timestamp, failures: count, backoff: seconds}
-        self.dns_cache = {}
-        self.dns_cache_ttl = 300  # 5 minutes TTL for DNS cache
+        self.max_concurrent = max_concurrent
+        self.session: Optional[aiohttp.ClientSession] = None
+        self.tasks: Set[asyncio.Task] = set()
+        self.store_queues: Dict[str, asyncio.Queue] = {}
 
-        # Configure retry strategy
-        self.retry_strategy = RetryWithProxy(
-            total=3,  # Maximum number of retries
-            backoff_factor=1,  # Time between retries increases exponentially
-            status_forcelist=[429, 500, 502, 503, 504],  # Status codes to retry on
-            allowed_methods=["GET"],
-            proxy_list=proxy_list or []
-        )
-
-        # Create and configure session with retry strategy
-        self.session = requests.Session()
-        adapter = HTTPAdapter(max_retries=self.retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
-
-    async def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """Fetch and process products from a store with improved error handling and retries"""
-        self._init_store_stats(store_url)
-        stats = self.store_stats[store_url]
-        stats['total_requests'] += 1
-
-        # Check if we should skip this store due to recent failures
-        if not self._should_retry_store(store_url):
-            return []
-
-        # Validate domain before making request
-        if not self._validate_domain(store_url):
-            self._update_store_failure(store_url)
-            log_scraping_error(store_url, Exception("DNS resolution failed"), {
-                'store_stats': stats,
-                'failed_stores': self.failed_stores
-            })
-            return []
-
-        try:
-            await self._wait_for_rate_limit(store_url)
-            session = await self.session_manager.get_session(store_url)
-
-            try:
-                async with session.get(f"{store_url}/products.json") as response:
-                    response.raise_for_status()
-                    data = await response.json()
-
-                    self.session_manager.mark_proxy_success()
-                    stats['successful_requests'] += 1
-                    stats['last_success'] = time.time()
-
-                    matching_products = []
-                    lowercase_keywords = [k.lower() for k in keywords]
-
-                    for product in data.get('products', []):
-                        try:
-                            if any(k in product['title'].lower() for k in lowercase_keywords):
-                                processed = await self._process_product(store_url, product)
-                                if processed:
-                                    identifier = f"{store_url}-{product['id']}"
-                                    if self.product_tracker.is_new_or_changed(
-                                        identifier, 
-                                        processed.get('stock', 0)
-                                    ):
-                                        matching_products.append(processed)
-                        except Exception as e:
-                            logger.error(f"Error processing product {product.get('title', 'Unknown')}: {str(e)}")
-                            continue
-
-                    return matching_products
-
-            except Exception as e:
-                if hasattr(e, 'status') and e.status == 429:
-                    logger.warning(f"Rate limit hit for {store_url}, backing off...")
-                    await asyncio.sleep(5)  # Basic backoff
-                raise  # Re-raise for retry handling
-
-        except Exception as e:
-            stats['failed_requests'] += 1
-            stats['last_failure'] = time.time()
-            stats['recent_errors'].append({
-                'error': str(e),
-                'timestamp': time.time()
-            })
-
-            self.session_manager.mark_proxy_failed()
-            log_scraping_error(store_url, e, {
-                'stats': stats,
-                'proxy_stats': self.proxy_manager.get_stats() if self.proxy_manager else None
-            })
-
-            # Update failure statistics and implement exponential backoff
-            self._update_store_failure(store_url)
-            return []
-
-    async def _process_product(self, store_url: str, product: Dict) -> Optional[Dict]:
-        """Process raw product data into structured format"""
-        try:
-            variants = product.get('variants', [])
-            sizes = {}
-            variant_ids = {}
-            total_stock = 0
-
-            for variant in variants:
-                if variant.get('available'):
-                    size = str(variant.get('title'))
-                    inventory = variant.get('inventory_quantity', 1)
-                    total_stock += inventory
-                    sizes[size] = inventory
-                    variant_ids[size] = str(variant.get('id', ''))
-
-            return {
-                'title': product['title'],
-                'url': f"{store_url}/products/{product['handle']}",
-                'price': variants[0].get('price') if variants else 'N/A',
-                'image_url': product.get('images', [{}])[0].get('src', ''),
-                'stock': total_stock,
-                'sizes': sizes,
-                'variants': variant_ids,
-                'full_size_run': 'Bot 1 FSR' if total_stock > 0 else 'OOS'
-            }
-
-        except Exception as e:
-            log_scraping_error(store_url, e, {
-                'product': product.get('title', 'Unknown'),
-                'error_location': '_process_product'
-            })
-            return None
+    async def setup(self):
+        """Initialize monitor resources"""
+        if self.session is None:
+            timeout = ClientTimeout(total=30)
+            connector = TCPConnector(ssl=False, limit=self.max_concurrent)
+            self.session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers={
+                    'User-Agent': USER_AGENT,
+                    'Accept': 'application/json'
+                }
+            )
 
     async def close(self):
         """Cleanup resources"""
-        await self.session_manager.close_all()
-        if hasattr(self, 'session'):
-            self.session.close()
+        if self.session and not self.session.closed:
+            await self.session.close()
 
-    def _validate_domain(self, url: str, max_retries: int = 3) -> bool:
-        """Validate domain accessibility with DNS lookup, caching and retries"""
+        # Cancel all running tasks
+        for task in self.tasks:
+            task.cancel()
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        self.tasks.clear()
+
+    async def monitor_store(self, store_url: str, keywords: List[str]) -> List[Dict]:
+        """Monitor a single store with retries and error handling"""
+        await self.setup()
+        domain = urlparse(store_url).netloc
+        retry_count = 0
+        max_retries = 3
+
+        while retry_count < max_retries:
+            try:
+                # Get proxy and wait for rate limit
+                proxy = await self.proxy_manager.get_proxy()
+                await self.rate_limiter.acquire(domain)
+
+                # Make request with proxy if available
+                async with self.session.get(
+                    f"{store_url}/products.json",
+                    proxy=proxy
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+                    # Update rate limiting and proxy health
+                    self.rate_limiter.decrease_backoff(domain)
+                    if proxy:
+                        self.proxy_manager.release_proxy(proxy, True)
+
+                    # Process matching products
+                    products = []
+                    for product in data.get('products', []):
+                        if await self._matches_keywords(product, keywords):
+                            processed = await self._process_product(product)
+                            if processed and self.product_tracker.is_new_or_changed(processed):
+                                products.append(processed)
+
+                    return products
+
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"Error monitoring {store_url} (attempt {retry_count}): {e}")
+
+                # Update rate limiting and proxy health
+                self.rate_limiter.increase_backoff(domain)
+                if proxy:
+                    self.proxy_manager.release_proxy(proxy, False)
+
+                if retry_count < max_retries:
+                    await asyncio.sleep(2 ** retry_count)  # Exponential backoff
+
+        return []  # Return empty list after all retries failed
+
+    async def _matches_keywords(self, product: Dict, keywords: List[str]) -> bool:
+        """Check if product matches keywords"""
+        product_text = (
+            product.get('title', '').lower() + ' ' +
+            product.get('description', '').lower()
+        )
+        return any(k.lower() in product_text for k in keywords)
+
+    async def _process_product(self, product: Dict) -> Optional[Dict]:
+        """Process raw product data into structured format"""
         try:
-            parsed = urlparse(url)
-            domain = parsed.netloc
+            variants = product.get('variants', [])
+            if not variants:
+                return None
 
-            # Check DNS cache first
-            cache_entry = self.dns_cache.get(domain)
-            current_time = time.time()
+            # Calculate availability and stock levels
+            total_stock = 0
+            sizes = {}
+            for variant in variants:
+                if variant.get('available'):
+                    size = str(variant.get('title', 'One Size'))
+                    inventory = variant.get('inventory_quantity', 0)
+                    total_stock += inventory
+                    sizes[size] = inventory
 
-            if cache_entry and current_time - cache_entry['timestamp'] < self.dns_cache_ttl:
-                return cache_entry['valid']
-
-            # Try DNS resolution with retries
-            for attempt in range(max_retries):
-                try:
-                    socket.gethostbyname(domain)
-                    self.dns_cache[domain] = {'valid': True, 'timestamp': current_time}
-                    return True
-                except socket.gaierror as e:
-                    if attempt == max_retries - 1:
-                        logger.error(f"DNS resolution failed for {url} after {max_retries} attempts: {e}")
-                        self.dns_cache[domain] = {'valid': False, 'timestamp': current_time}
-                        return False
-                    time.sleep(1 * (attempt + 1))  # Exponential backoff
-
-        except Exception as e:
-            logger.error(f"Domain validation error for {url}: {e}")
-            return False
-
-    def _should_retry_store(self, store_url: str) -> bool:
-        """Determine if we should retry a failed store based on exponential backoff"""
-        if store_url not in self.failed_stores:
-            return True
-
-        store_data = self.failed_stores[store_url]
-        current_time = time.time()
-        time_since_failure = current_time - store_data['last_failure']
-
-        if time_since_failure >= store_data['backoff']:
-            return True
-
-        logger.info(f"Skipping {store_url} - Cooling down for {store_data['backoff'] - time_since_failure:.1f}s")
-        return False
-
-    def _update_store_failure(self, store_url: str):
-        """Update failure statistics for a store"""
-        current_time = time.time()
-        if store_url not in self.failed_stores:
-            self.failed_stores[store_url] = {
-                'failures': 1,
-                'last_failure': current_time,
-                'backoff': 60  # Start with 1 minute backoff
-            }
-        else:
-            store_data = self.failed_stores[store_url]
-            store_data['failures'] += 1
-            store_data['last_failure'] = current_time
-            # Exponential backoff with max of 1 hour
-            store_data['backoff'] = min(3600, store_data['backoff'] * 2)
-
-    def _init_store_stats(self, store_url: str):
-        """Initialize store statistics"""
-        if store_url not in self.store_stats:
-            self.store_stats[store_url] = {
-                'total_requests': 0,
-                'successful_requests': 0,
-                'failed_requests': 0,
-                'last_success': None,
-                'last_failure': None,
-                'recent_errors': deque(maxlen=100)
-            }
-
-    async def _wait_for_rate_limit(self, store_url: str):
-        """Advanced rate limiting with sliding window"""
-        current_time = time.time()
-
-        # Initialize request window if needed
-        if store_url not in self.request_windows:
-            self.request_windows[store_url] = deque()
-
-        window = self.request_windows[store_url]
-
-        # Remove old requests from window
-        while window and window[0] < current_time - self.window_size:
-            window.popleft()
-
-        # Wait if too many requests in window
-        if len(window) >= self.max_requests_per_window:
-            wait_time = window[0] + self.window_size - current_time
-            if wait_time > 0:
-                logger.debug(f"Rate limit wait for {store_url}: {wait_time:.2f}s")
-                await asyncio.sleep(wait_time)
-
-        # Add current request to window
-        window.append(current_time)
-
-
-    def get_product_variants(self, product_url):
-        """Fetch specific product variants from a Shopify product URL"""
-        try:
-            # Convert product URL to JSON endpoint
-            if not product_url.endswith('.json'):
-                if product_url.endswith('/'):
-                    product_url = product_url[:-1]
-                product_url = product_url + '.json'
-
-            # Fetch product data with retry logic
-            max_retries = 3
-            product_data = None  # Initialize product_data
-
-            for attempt in range(max_retries):
-                try:
-                    with self.retry_strategy:
-                        response = self.session.get(product_url, timeout=10)
-                        response.raise_for_status()
-                        response_data = response.json()
-                        product_data = response_data.get('product', {})
-                        if product_data:  # Only break if we got valid data
-                            break
-                        logger.warning(f"Empty product data received for {product_url}")
-                except requests.exceptions.RequestException as e:
-                    log_scraping_error(product_url, e, {
-                        'attempt': attempt + 1,
-                        'max_retries': max_retries
-                    })
-                    if attempt == max_retries - 1:
-                        logger.error(f"Failed to fetch product data after {max_retries} attempts")
-                        return {'variants': []}
-                    time.sleep(1 * (attempt + 1))
-
-            if not product_data:
-                logger.warning(f"No valid product data found for {product_url}")
-                return {'variants': []}
-
-            # Extract variant information
-            variants = []
-            for variant in product_data.get('variants', []):
-                variants.append({
-                    'id': variant.get('id'),
-                    'title': variant.get('title'),
-                    'price': variant.get('price'),
-                    'inventory_quantity': variant.get('inventory_quantity', 0),
-                    'available': variant.get('available', False)
-                })
+            if not total_stock:
+                return None
 
             return {
-                'product_title': product_data.get('title'),
-                'product_handle': product_data.get('handle'),
-                'variants': variants
+                'id': product['id'],
+                'title': product['title'],
+                'handle': product['handle'],
+                'price': variants[0].get('price'),
+                'image_url': (product.get('images', [{}])[0] or {}).get('src'),
+                'available': total_stock > 0,
+                'total_stock': total_stock,
+                'sizes': sizes,
+                'variants': [
+                    {
+                        'id': v['id'],
+                        'title': v['title'],
+                        'price': v['price'],
+                        'available': v['available']
+                    }
+                    for v in variants
+                ]
             }
 
         except Exception as e:
-            log_scraping_error(product_url, e)
-            return {'variants': []}
-
-class RateLimiter:
-    def __init__(self, rate_limit):
-        self.rate_limit = rate_limit
-        self.last_request_time = 0
-        self.consecutive_429s = 0
-        self.backoff_multiplier = 1.0
-        self.total_requests = 0
-        self.failed_requests = 0
-
-    def __enter__(self):
-        current_time = time.time()
-        time_passed = current_time - self.last_request_time
-
-        # Calculate delay based on rate limit and backoff
-        base_delay = 1 / self.rate_limit
-        actual_delay = base_delay * self.backoff_multiplier
-
-        if time_passed < actual_delay:
-            # Add small random jitter (0-100ms) to prevent synchronized requests
-            jitter = random.uniform(0, 0.1)
-            sleep_time = actual_delay - time_passed + jitter
-            logger.debug(
-                "Rate limiting",
-                extra={'extra_fields': {
-                    'sleep_time': sleep_time,
-                    'backoff_multiplier': self.backoff_multiplier,
-                    'total_requests': self.total_requests,
-                    'failed_requests': self.failed_requests
-                }}
-            )
-            time.sleep(sleep_time)
-
-        self.total_requests += 1
-        self.last_request_time = time.time()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type and "429" in str(exc_val):
-            self.consecutive_429s += 1
-            self.failed_requests += 1
-            self.backoff_multiplier = min(8.0, self.backoff_multiplier * 2)
-            logger.warning(
-                "Rate limit exceeded",
-                extra={'extra_fields': {
-                    'consecutive_429s': self.consecutive_429s,
-                    'backoff_multiplier': self.backoff_multiplier,
-                    'total_requests': self.total_requests,
-                    'failed_requests': self.failed_requests
-                }}
-            )
-        else:
-            self.consecutive_429s = max(0, self.consecutive_429s - 1)
-            if self.consecutive_429s == 0:
-                self.backoff_multiplier = max(1.0, self.backoff_multiplier * 0.75)
-
-class RetryWithProxy(Retry):
-    def __init__(self, *args, **kwargs):
-        self.proxy_list = kwargs.pop('proxy_list', [])
-        self.current_proxy_index = 0
-        super().__init__(*args, **kwargs)
-
-    def get_next_proxy(self):
-        """Get next proxy from the list with round-robin"""
-        if not self.proxy_list:
+            logger.error(f"Error processing product {product.get('title')}: {e}")
             return None
-        proxy = self.proxy_list[self.current_proxy_index]
-        self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
-        return proxy
 
-    def new(self, **kw):
-        """Create a new instance while maintaining proxy configuration"""
-        new_retry = super().new(**kw)
-        new_retry.proxy_list = self.proxy_list
-        new_retry.current_proxy_index = self.current_proxy_index
-        return new_retry
+    async def monitor_stores(self, stores: List[str], keywords: List[str]) -> List[Dict]:
+        """Monitor multiple stores concurrently"""
+        await self.setup()
 
-    def increment(self, *args, **kwargs):
-        """Override to implement proxy rotation on each retry"""
-        if self.proxy_list:
-            # Rotate to next proxy before retrying
-            self.get_next_proxy()
-        return super().increment(*args, **kwargs)
+        tasks = []
+        for store_url in stores:
+            task = asyncio.create_task(self.monitor_store(store_url, keywords))
+            tasks.append(task)
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.remove)
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        products = []
+        for store_url, result in zip(stores, results):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to monitor {store_url}: {result}")
+            else:
+                products.extend(result)
+
+        return products
 
 async def main():
-    # Example usage: Replace with your actual store URLs, keywords, and proxy list
-    store_urls = ["https://example-store-1.myshopify.com", "https://example-store-2.myshopify.com"]
-    keywords = ["tshirt", "jacket"]
-    proxy_list = ["http://your_proxy_1:port", "http://your_proxy_2:port"] #Replace with your proxy list
+    """Example usage of ShopifyMonitor"""
+    monitor = ShopifyMonitor(rate_limit=1.0)
 
-    monitor = ShopifyMonitor(rate_limit=1, proxy_list=proxy_list)
-    async with monitor:
-        tasks = [monitor.fetch_products(url, keywords) for url in store_urls]
-        results = await asyncio.gather(*tasks)
-        print(results)
-        #Further processing of the results
-        # Example:  Save to a database, send to webhook
+    try:
+        stores = [
+            "https://shop.shopwss.com",
+            "https://www.shoepalace.com",
+            "https://www.jimmyjazz.com"
+        ]
+        keywords = ["nike", "jordan", "dunk"]
 
+        products = await monitor.monitor_stores(stores, keywords)
+        print(f"Found {len(products)} matching products")
+
+    finally:
+        await monitor.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

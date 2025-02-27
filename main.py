@@ -1,14 +1,12 @@
 import asyncio
 import sys
 import os
-from typing import Dict, List
 import time
 import traceback
 from datetime import datetime
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import RateLimitedDiscordWebhook
 from models import db, User, Store, Keyword, MonitorConfig
-import logging
 from logger_config import scraper_logger
 
 logger = scraper_logger
@@ -18,12 +16,9 @@ class MonitorManager:
         self.user_id = user_id
         self.monitor = None
         self.webhook = None
-        self.seen_products = {}
         self.start_time = time.time()
         self.last_health_check = time.time()
         self.health_check_interval = 300  # 5 minutes
-        self.consecutive_errors = 0
-        self.max_consecutive_errors = 5
 
     async def initialize(self, app):
         """Initialize monitor with user configuration"""
@@ -38,13 +33,28 @@ class MonitorManager:
                 logger.error(f"No configuration found for user {self.user_id}")
                 return False
 
-            self.monitor = ShopifyMonitor(rate_limit=config.rate_limit)
+            # Get proxies if enabled
+            proxies = None
+            if config.use_proxies:
+                proxies = [
+                    f"{p.protocol}://{p.username}:{p.password}@{p.ip}:{p.port}"
+                    if p.username and p.password else
+                    f"{p.protocol}://{p.ip}:{p.port}"
+                    for p in user.proxies if p.enabled
+                ]
+
+            self.monitor = ShopifyMonitor(
+                rate_limit=config.rate_limit,
+                proxies=proxies,
+                max_concurrent=3
+            )
             self.webhook = RateLimitedDiscordWebhook(webhook_url=user.discord_webhook_url)
 
             logger.info(f"Initialized monitor for user {user.username} (ID: {self.user_id})")
             logger.info(f"- Discord Webhook: {'Configured' if user.discord_webhook_url else 'Not configured'}")
             logger.info(f"- Rate limit: {config.rate_limit} req/s")
             logger.info(f"- Monitor delay: {config.monitor_delay}s")
+            logger.info(f"- Proxies: {'Enabled' if proxies else 'Disabled'}")
 
             return True
 
@@ -79,86 +89,58 @@ class MonitorManager:
                     logger.info("No active stores or keywords to monitor")
                     return True
 
-                logger.info(f"Processing {len(active_stores)} stores with {len(active_keywords)} keywords")
+                store_urls = [store.url for store in active_stores]
+                keywords = [kw.word for kw in active_keywords]
 
-                # Process stores concurrently in small batches
-                batch_size = 3
-                for i in range(0, len(active_stores), batch_size):
-                    batch = active_stores[i:i+batch_size]
-                    tasks = []
+                logger.info(f"Processing {len(store_urls)} stores with {len(keywords)} keywords")
+                products = await self.monitor.monitor_stores(store_urls, keywords)
 
-                    for store in batch:
-                        task = asyncio.create_task(
-                            self.monitor.fetch_products(
-                                store.url,
-                                [kw.word for kw in active_keywords]
-                            )
-                        )
-                        tasks.append(task)
+                for product in products:
+                    await self.webhook.send_product_notification(product)
 
-                    try:
-                        results = await asyncio.gather(*tasks, return_exceptions=True)
-                        for store, result in zip(batch, results):
-                            if isinstance(result, Exception):
-                                logger.error(f"Error monitoring {store.url}: {result}")
-                                continue
-
-                            for product in result:
-                                await self.webhook.send_product_notification(product)
-
-                    except Exception as e:
-                        logger.error(f"Batch processing error: {e}")
-                        continue
-
-                    # Brief pause between batches
-                    await asyncio.sleep(1)
-
-                self.consecutive_errors = 0
                 return True
 
         except Exception as e:
-            self.consecutive_errors += 1
             logger.error(f"Monitor cycle error: {e}")
-            if self.consecutive_errors >= self.max_consecutive_errors:
-                logger.error(f"Too many consecutive errors ({self.consecutive_errors})")
-                return False
-            return True
+            logger.error(traceback.format_exc())
+            return False
 
     async def run(self):
         """Main monitor loop with error recovery"""
         from app import create_app
         app = create_app()
 
-        if not await self.initialize(app):
-            return
+        try:
+            if not await self.initialize(app):
+                return
 
-        while True:
-            try:
-                # Health check
-                if not await self.health_check(app):
-                    logger.info("Health check failed, stopping monitor")
-                    break
+            while True:
+                try:
+                    # Health check
+                    if not await self.health_check(app):
+                        logger.info("Health check failed, stopping monitor")
+                        break
 
-                # Monitor cycle
-                if not await self.monitor_stores(app):
-                    logger.error("Monitor cycle failed, restarting")
-                    break
+                    # Monitor cycle
+                    if not await self.monitor_stores(app):
+                        logger.error("Monitor cycle failed, restarting")
+                        break
 
-                # Get delay from config
-                with app.app_context():
-                    config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
-                    delay = config.monitor_delay if config else 5
+                    # Get delay from config
+                    with app.app_context():
+                        config = MonitorConfig.query.filter_by(user_id=self.user_id).first()
+                        delay = config.monitor_delay if config else 30
 
-                await asyncio.sleep(delay)
+                    await asyncio.sleep(delay)
 
-            except Exception as e:
-                logger.error(f"Fatal error in monitor loop: {e}")
-                logger.error(traceback.format_exc())
-                break
+                except Exception as e:
+                    logger.error(f"Error in monitor loop: {e}")
+                    logger.error(traceback.format_exc())
+                    await asyncio.sleep(5)  # Brief pause before retrying
 
-        # Cleanup
-        if self.monitor:
-            await self.monitor.close()
+        finally:
+            if self.monitor:
+                await self.monitor.close()
 
 async def main():
     try:
