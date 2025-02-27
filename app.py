@@ -9,16 +9,24 @@ import psutil
 import time
 
 def is_monitor_running(user_id):
-    """Check if a specific user's monitor is running"""
+    """Check if a specific user's monitor is running and responsive"""
     try:
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            cmdline = ' '.join(proc.info['cmdline'] or [])
-            if ('python' in proc.info['name'] and 
-                'main.py' in cmdline and 
-                f"MONITOR_USER_ID={user_id}" in cmdline):
-                return True
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
+            try:
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                if ('python' in proc.info['name'] and 
+                    'main.py' in cmdline and 
+                    f"MONITOR_USER_ID={user_id}" in cmdline):
+                    # Verify process is actually running (not zombie)
+                    process = psutil.Process(proc.info['pid'])
+                    if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                        # Check if process was started recently (within last 10 minutes)
+                        if time.time() - process.create_time() < 600:
+                            return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception as e:
+        print(f"Error checking monitor status: {e}")
     return False
 
 def create_app():
@@ -331,13 +339,20 @@ def create_app():
                 # Start a new monitor process for this user
                 env = os.environ.copy()
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
-
-                # Use start_new_session to ensure the monitor runs independently
-                subprocess.Popen(
-                    ['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"],
-                    env=env,
-                    start_new_session=True
-                )
+                env['PYTHONUNBUFFERED'] = '1'  # Ensure output is not buffered
+                
+                # Use the start_monitor.py script which has better process management
+                try:
+                    subprocess.Popen(
+                        ['python', 'start_monitor.py', str(current_user.id)],
+                        env=env,
+                        start_new_session=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT
+                    )
+                    flash('Monitor started successfully')
+                except Exception as e:
+                    flash(f'Error starting monitor: {str(e)}', 'error')
 
                 time.sleep(1)  # Brief pause to allow process to start
                 if is_monitor_running(current_user.id):
