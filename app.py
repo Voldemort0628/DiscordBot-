@@ -80,6 +80,25 @@ def manage_stores():
         db.session.commit()
         flash('Store added successfully')
         return redirect(url_for('manage_stores'))
+
+    # Handle toggle and delete actions
+    elif request.method == 'POST' and 'action' in request.form:
+        store_id = request.form.get('store_id')
+        store = Store.query.get(store_id)
+
+        if store:
+            action = request.form['action']
+            if action == 'toggle':
+                store.enabled = not store.enabled
+                db.session.commit()
+                flash(f"Store {'enabled' if store.enabled else 'disabled'}")
+            elif action == 'delete':
+                db.session.delete(store)
+                db.session.commit()
+                flash('Store deleted')
+
+        return redirect(url_for('manage_stores'))
+
     stores = Store.query.all()
     return render_template('stores.html', form=form, stores=stores)
 
@@ -93,6 +112,25 @@ def manage_keywords():
         db.session.commit()
         flash('Keyword added successfully')
         return redirect(url_for('manage_keywords'))
+
+    # Handle toggle and delete actions
+    elif request.method == 'POST' and 'action' in request.form:
+        keyword_id = request.form.get('keyword_id')
+        keyword = Keyword.query.get(keyword_id)
+
+        if keyword:
+            action = request.form['action']
+            if action == 'toggle':
+                keyword.enabled = not keyword.enabled
+                db.session.commit()
+                flash(f"Keyword {'enabled' if keyword.enabled else 'disabled'}")
+            elif action == 'delete':
+                db.session.delete(keyword)
+                db.session.commit()
+                flash('Keyword deleted')
+
+        return redirect(url_for('manage_keywords'))
+
     keywords = Keyword.query.all()
     return render_template('keywords.html', form=form, keywords=keywords)
 

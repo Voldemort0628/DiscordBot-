@@ -30,6 +30,7 @@
                         </td>
                         <td>
                             <form method="POST" action="{{ url_for('manage_keywords') }}" style="display: inline;">
+                                {{ form.hidden_tag() }}
                                 <input type="hidden" name="keyword_id" value="{{ keyword.id }}">
                                 <button type="submit" name="action" value="toggle" class="btn btn-sm btn-warning">
                                     {{ "Disable" if keyword.enabled else "Enable" }}

@@ -30,6 +30,7 @@
                         </td>
                         <td>
                             <form method="POST" action="{{ url_for('manage_stores') }}" style="display: inline;">
+                                {{ form.hidden_tag() }}
                                 <input type="hidden" name="store_id" value="{{ store.id }}">
                                 <button type="submit" name="action" value="toggle" class="btn btn-sm btn-warning">
                                     {{ "Disable" if store.enabled else "Enable" }}
