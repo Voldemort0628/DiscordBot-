@@ -5,7 +5,7 @@ from typing import Dict, Set
 import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from models import db, Store, Keyword, MonitorConfig, User
 
 app = Flask(__name__)
@@ -49,6 +49,7 @@ class UserMonitor:
                             continue
 
                         print(f"User {self.user_id} monitoring {len(stores)} stores")
+                        print(f"Active keywords: {[k.word for k in keywords]}")
 
                         for store in stores:
                             try:

@@ -20,11 +20,15 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # Configure monitor service URL based on environment
-REPLIT_DOMAIN = os.environ.get('REPL_SLUG')
-if REPLIT_DOMAIN:
-    MONITOR_SERVICE_URL = f"https://{REPLIT_DOMAIN}-3000.{os.environ.get('REPL_OWNER')}.repl.co"
+REPLIT_SLUG = os.environ.get('REPL_SLUG')
+REPLIT_OWNER = os.environ.get('REPL_OWNER')
+if REPLIT_SLUG and REPLIT_OWNER:
+    # In production, use the monitor subdomain
+    MONITOR_SERVICE_URL = f"https://{REPLIT_SLUG}-3000.{REPLIT_OWNER}.repl.co"
 else:
     MONITOR_SERVICE_URL = "http://localhost:3000"
+
+print(f"Monitor service URL: {MONITOR_SERVICE_URL}")  # Debug log
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -33,12 +37,13 @@ def load_user(user_id):
 def is_monitor_running():
     """Check if the monitor is running for the current user"""
     try:
-        response = requests.get(
-            f"{MONITOR_SERVICE_URL}/status/{current_user.id}",
-            timeout=5
-        )
+        status_url = f"{MONITOR_SERVICE_URL}/status/{current_user.id}"
+        print(f"Checking monitor status at: {status_url}")  # Debug log
+        response = requests.get(status_url, timeout=5)
         if response.status_code == 200:
-            return response.json().get('status') == 'running'
+            status = response.json().get('status') == 'running'
+            print(f"Monitor status: {status}")  # Debug log
+            return status
         print(f"Status check failed with code: {response.status_code}")
         return False
     except Exception as e:
@@ -51,26 +56,21 @@ def toggle_monitor():
     """Toggle monitor for the current user"""
     action = 'start' if not is_monitor_running() else 'stop'
     try:
-        response = requests.get(
-            f"{MONITOR_SERVICE_URL}/{action}_monitor/{current_user.id}",
-            timeout=5
-        )
+        monitor_url = f"{MONITOR_SERVICE_URL}/{action}_monitor/{current_user.id}"
+        print(f"Sending monitor {action} request to: {monitor_url}")  # Debug log
+        response = requests.get(monitor_url, timeout=5)
         response.raise_for_status()
         flash(f'Monitor {action}ed successfully')
     except requests.exceptions.RequestException as e:
-        print(f"Monitor toggle error: {e}")
-        flash(f'Error toggling monitor. Please try again later.', 'error')
-
+        error_msg = f'Error toggling monitor: {str(e)}'
+        print(error_msg)  # Debug log
+        flash(error_msg, 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/')
 @login_required
 def dashboard():
-    # Get user's stores and keywords
-    stores = Store.query.filter_by(added_by=current_user.id).all()
-    keywords = Keyword.query.filter_by(added_by=current_user.id).all()
-
-    # Get or create user's config
+    # Ensure user has config
     config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
     if not config:
         config = MonitorConfig(
@@ -82,37 +82,19 @@ def dashboard():
         db.session.add(config)
         db.session.commit()
 
+    # Get user's stores and keywords
+    stores = Store.query.filter_by(added_by=current_user.id).all()
+    keywords = Keyword.query.filter_by(added_by=current_user.id).all()
+
+    # Debug logging
+    print(f"User {current_user.id} has {len(stores)} stores and {len(keywords)} keywords")
+
     monitor_running = is_monitor_running()
     return render_template('dashboard.html',
                          stores=stores,
                          keywords=keywords,
                          config=config,
                          monitor_running=monitor_running)
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        user = User(username=form.username.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-
-        # Create default config for new user
-        config = MonitorConfig(
-            user_id=user.id,
-            rate_limit=1.0,
-            monitor_delay=30,
-            max_products=250
-        )
-        db.session.add(config)
-        db.session.commit()
-
-        flash('Registration successful! Please login.')
-        return redirect(url_for('login'))
-    return render_template('register.html', form=form)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -134,8 +116,8 @@ def logout():
     if is_monitor_running():
         try:
             requests.get(f"{MONITOR_SERVICE_URL}/stop_monitor/{current_user.id}", timeout=5)
-        except:
-            pass
+        except Exception as e:
+            print(f"Error stopping monitor during logout: {e}")
     logout_user()
     return redirect(url_for('login'))
 
@@ -216,6 +198,31 @@ def manage_config():
         flash('Configuration updated successfully')
         return redirect(url_for('dashboard'))
     return render_template('config.html', form=form)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        user = User(username=form.username.data)
+        user.set_password(form.password.data)
+        db.session.add(user)
+        db.session.commit()
+
+        # Create default config for new user
+        config = MonitorConfig(
+            user_id=user.id,
+            rate_limit=1.0,
+            monitor_delay=30,
+            max_products=250
+        )
+        db.session.add(config)
+        db.session.commit()
+
+        flash('Registration successful! Please login.')
+        return redirect(url_for('login'))
+    return render_template('register.html', form=form)
 
 if __name__ == '__main__':
     with app.app_context():
