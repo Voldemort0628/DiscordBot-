@@ -38,6 +38,14 @@ author = 9248373
 task = "shell.exec"
 args = "python start_monitor.py 10"
 
+[[workflows.workflow]]
+name = "Test Discord"
+author = 9248373
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python run_webhook_test.py your-discord-webhook-url"
+
 [deployment]
 run = ["sh", "-c", "gunicorn --workers 3 --worker-class gthread --threads 3 --timeout 120 --preload --max-requests 1000 --max-requests-jitter 50 --bind 0.0.0.0:5000 wsgi:app"]
 
