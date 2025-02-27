@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import json
 import time
+import requests
 import random
 from typing import Dict, List, Optional, Set
 from datetime import datetime
@@ -10,6 +11,7 @@ import logging
 import socket
 from urllib.parse import urlparse
 from requests.exceptions import RequestException
+from requests.adapters import Retry, HTTPAdapter
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 from logger_config import scraper_logger, log_scraping_error
 from proxy_manager import ProxyManager
@@ -22,7 +24,6 @@ class ProxyManager:
         self.failed_proxies: Set[str] = set()
         self.proxy_stats: Dict[str, Dict] = {}
         self.current_proxy_index = 0
-
 
     def add_proxies_from_list(self, proxy_list: List[str]):
         self.proxies.extend(proxy_list)
@@ -158,44 +159,23 @@ class ShopifyMonitor:
         self.dns_cache = {}
         self.dns_cache_ttl = 300  # 5 minutes TTL for DNS cache
 
-    def _init_store_stats(self, store_url: str):
-        """Initialize store statistics"""
-        if store_url not in self.store_stats:
-            self.store_stats[store_url] = {
-                'total_requests': 0,
-                'successful_requests': 0,
-                'failed_requests': 0,
-                'last_success': None,
-                'last_failure': None,
-                'recent_errors': deque(maxlen=100)
-            }
+        # Configure retry strategy
+        self.retry_strategy = RetryWithProxy(
+            total=3,  # Maximum number of retries
+            backoff_factor=1,  # Time between retries increases exponentially
+            status_forcelist=[429, 500, 502, 503, 504],  # Status codes to retry on
+            allowed_methods=["GET"],
+            proxy_list=proxy_list or []
+        )
 
-    async def _wait_for_rate_limit(self, store_url: str):
-        """Advanced rate limiting with sliding window"""
-        current_time = time.time()
-
-        # Initialize request window if needed
-        if store_url not in self.request_windows:
-            self.request_windows[store_url] = deque()
-
-        window = self.request_windows[store_url]
-
-        # Remove old requests from window
-        while window and window[0] < current_time - self.window_size:
-            window.popleft()
-
-        # Wait if too many requests in window
-        if len(window) >= self.max_requests_per_window:
-            wait_time = window[0] + self.window_size - current_time
-            if wait_time > 0:
-                logger.debug(f"Rate limit wait for {store_url}: {wait_time:.2f}s")
-                await asyncio.sleep(wait_time)
-
-        # Add current request to window
-        window.append(current_time)
+        # Create and configure session with retry strategy
+        self.session = requests.Session()
+        adapter = HTTPAdapter(max_retries=self.retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     async def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """Fetch and process products from a store"""
+        """Fetch and process products from a store with improved error handling and retries"""
         self._init_store_stats(store_url)
         stats = self.store_stats[store_url]
         stats['total_requests'] += 1
@@ -217,37 +197,42 @@ class ShopifyMonitor:
             await self._wait_for_rate_limit(store_url)
             session = await self.session_manager.get_session(store_url)
 
-            async with session.get(f"{store_url}/products.json") as response:
-                response.raise_for_status()
-                data = await response.json()
+            try:
+                async with session.get(f"{store_url}/products.json") as response:
+                    response.raise_for_status()
+                    data = await response.json()
 
-                self.session_manager.mark_proxy_success()
-                stats['successful_requests'] += 1
-                stats['last_success'] = time.time()
+                    self.session_manager.mark_proxy_success()
+                    stats['successful_requests'] += 1
+                    stats['last_success'] = time.time()
 
-                matching_products = []
-                lowercase_keywords = [k.lower() for k in keywords]
+                    matching_products = []
+                    lowercase_keywords = [k.lower() for k in keywords]
 
-                for product in data.get('products', []):
-                    try:
-                        if any(k in product['title'].lower() for k in lowercase_keywords):
-                            processed = await self._process_product(store_url, product)
-                            if processed:
-                                identifier = f"{store_url}-{product['id']}"
-                                if self.product_tracker.is_new_or_changed(
-                                    identifier, 
-                                    processed.get('stock', 0)
-                                ):
-                                    matching_products.append(processed)
-                    except Exception as e:
-                        log_scraping_error(store_url, e, {
-                            'product': product.get('title', 'Unknown'),
-                            'error_location': 'product_processing'
-                        })
+                    for product in data.get('products', []):
+                        try:
+                            if any(k in product['title'].lower() for k in lowercase_keywords):
+                                processed = await self._process_product(store_url, product)
+                                if processed:
+                                    identifier = f"{store_url}-{product['id']}"
+                                    if self.product_tracker.is_new_or_changed(
+                                        identifier, 
+                                        processed.get('stock', 0)
+                                    ):
+                                        matching_products.append(processed)
+                        except Exception as e:
+                            logger.error(f"Error processing product {product.get('title', 'Unknown')}: {str(e)}")
+                            continue
 
-                return matching_products
+                    return matching_products
 
-        except aiohttp.ClientError as e:
+            except Exception as e:
+                if hasattr(e, 'status') and e.status == 429:
+                    logger.warning(f"Rate limit hit for {store_url}, backing off...")
+                    await asyncio.sleep(5)  # Basic backoff
+                raise  # Re-raise for retry handling
+
+        except Exception as e:
             stats['failed_requests'] += 1
             stats['last_failure'] = time.time()
             stats['recent_errors'].append({
@@ -260,6 +245,9 @@ class ShopifyMonitor:
                 'stats': stats,
                 'proxy_stats': self.proxy_manager.get_stats() if self.proxy_manager else None
             })
+
+            # Update failure statistics and implement exponential backoff
+            self._update_store_failure(store_url)
             return []
 
     async def _process_product(self, store_url: str, product: Dict) -> Optional[Dict]:
@@ -299,6 +287,8 @@ class ShopifyMonitor:
     async def close(self):
         """Cleanup resources"""
         await self.session_manager.close_all()
+        if hasattr(self, 'session'):
+            self.session.close()
 
     def _validate_domain(self, url: str, max_retries: int = 3) -> bool:
         """Validate domain accessibility with DNS lookup, caching and retries"""
@@ -361,6 +351,43 @@ class ShopifyMonitor:
             # Exponential backoff with max of 1 hour
             store_data['backoff'] = min(3600, store_data['backoff'] * 2)
 
+    def _init_store_stats(self, store_url: str):
+        """Initialize store statistics"""
+        if store_url not in self.store_stats:
+            self.store_stats[store_url] = {
+                'total_requests': 0,
+                'successful_requests': 0,
+                'failed_requests': 0,
+                'last_success': None,
+                'last_failure': None,
+                'recent_errors': deque(maxlen=100)
+            }
+
+    async def _wait_for_rate_limit(self, store_url: str):
+        """Advanced rate limiting with sliding window"""
+        current_time = time.time()
+
+        # Initialize request window if needed
+        if store_url not in self.request_windows:
+            self.request_windows[store_url] = deque()
+
+        window = self.request_windows[store_url]
+
+        # Remove old requests from window
+        while window and window[0] < current_time - self.window_size:
+            window.popleft()
+
+        # Wait if too many requests in window
+        if len(window) >= self.max_requests_per_window:
+            wait_time = window[0] + self.window_size - current_time
+            if wait_time > 0:
+                logger.debug(f"Rate limit wait for {store_url}: {wait_time:.2f}s")
+                await asyncio.sleep(wait_time)
+
+        # Add current request to window
+        window.append(current_time)
+
+
     def get_product_variants(self, product_url):
         """Fetch specific product variants from a Shopify product URL"""
         try:
@@ -376,7 +403,7 @@ class ShopifyMonitor:
 
             for attempt in range(max_retries):
                 try:
-                    with self.rate_limiter:
+                    with self.retry_strategy:
                         response = self.session.get(product_url, timeout=10)
                         response.raise_for_status()
                         response_data = response.json()
@@ -481,6 +508,7 @@ class RetryWithProxy(Retry):
         super().__init__(*args, **kwargs)
 
     def get_next_proxy(self):
+        """Get next proxy from the list with round-robin"""
         if not self.proxy_list:
             return None
         proxy = self.proxy_list[self.current_proxy_index]
@@ -488,10 +516,18 @@ class RetryWithProxy(Retry):
         return proxy
 
     def new(self, **kw):
+        """Create a new instance while maintaining proxy configuration"""
         new_retry = super().new(**kw)
         new_retry.proxy_list = self.proxy_list
         new_retry.current_proxy_index = self.current_proxy_index
         return new_retry
+
+    def increment(self, *args, **kwargs):
+        """Override to implement proxy rotation on each retry"""
+        if self.proxy_list:
+            # Rotate to next proxy before retrying
+            self.get_next_proxy()
+        return super().increment(*args, **kwargs)
 
 async def main():
     # Example usage: Replace with your actual store URLs, keywords, and proxy list
