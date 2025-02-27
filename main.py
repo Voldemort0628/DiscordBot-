@@ -26,7 +26,7 @@ class MonitorManager:
         """Initialize monitor with user configuration"""
         with app.app_context():
             try:
-                user = User.query.get(self.user_id)
+                user = db.session.get(User, self.user_id)
                 if not user or not user.enabled:
                     logger.error(f"User {self.user_id} not found or disabled")
                     return False
@@ -81,7 +81,7 @@ class MonitorManager:
 
         try:
             with app.app_context():
-                user = User.query.get(self.user_id)
+                user = db.session.get(User, self.user_id)
                 if not user or not user.enabled:
                     logger.warning(f"User {self.user_id} was disabled")
                     return False
