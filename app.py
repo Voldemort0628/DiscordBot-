@@ -356,36 +356,15 @@ def create_app():
         group_form = ProxyGroupForm()
         list_form = ProxyListForm()
 
-        if request.method == 'POST' and 'action' in request.form:
-            try:
-                proxy_id = request.form.get('proxy_id')
-                proxy = Proxy.query.get_or_404(proxy_id)
-
-                if proxy.user_id != current_user.id:
-                    flash('Access denied', 'error')
-                    return redirect(url_for('manage_proxies'))
-
-                action = request.form['action']
-                if action == 'toggle':
-                    proxy.enabled = not proxy.enabled
-                    db.session.commit()
-                    flash(f"Proxy {'enabled' if proxy.enabled else 'disabled'}")
-                elif action == 'delete':
-                    db.session.delete(proxy)
-                    db.session.commit()
-                    flash('Proxy deleted')
-                elif action == 'test':
-                    # Implement proxy testing logic here
-                    flash('Proxy test functionality coming soon')
-            except Exception as e:
-                db.session.rollback()
-                print(f"Error processing proxy action: {e}")
-                flash('Error processing proxy action', 'error')
-            return redirect(url_for('manage_proxies'))
-
-        proxies = Proxy.query.filter_by(user_id=current_user.id).all()
+        # Get the user's proxy groups with all related data
         proxy_groups = ProxyGroup.query.filter_by(user_id=current_user.id).all()
-        return render_template('proxies.html', form=form, import_form=import_form, proxies=proxies, group_form=group_form, list_form=list_form, proxy_groups=proxy_groups)
+
+        return render_template('proxies.html', 
+                            form=form, 
+                            import_form=import_form, 
+                            group_form=group_form, 
+                            list_form=list_form, 
+                            proxy_groups=proxy_groups)
 
     @app.route('/import_proxies', methods=['POST'])
     @login_required
