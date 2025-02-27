@@ -148,6 +148,12 @@ def manage_config():
         form.populate_obj(config)
         db.session.commit()
         flash('Configuration updated successfully')
+
+        # Restart monitor if it's running to pick up new webhook URL
+        if is_monitor_running():
+            subprocess.Popen(['python', 'main.py'])
+            flash('Monitor restarted with new configuration')
+
         return redirect(url_for('dashboard'))
     return render_template('config.html', form=form)
 

@@ -46,9 +46,17 @@ async def main():
                 db.session.add(config)
                 db.session.commit()
 
+            # Initialize monitor and webhook with configuration
             monitor = ShopifyMonitor(rate_limit=config.rate_limit)
-            webhook = DiscordWebhook()
+            webhook = DiscordWebhook(webhook_url=config.discord_webhook_url)
             seen_products = set()
+
+            print("Starting monitor with configuration:")
+            print(f"- Rate limit: {config.rate_limit} req/s")
+            print(f"- Monitor delay: {config.monitor_delay} seconds")
+            print(f"- Max products: {config.max_products}")
+            print(f"- Discord webhook: {'Configured' if config.discord_webhook_url else 'Not configured'}")
+            print("\nPress Ctrl+C to stop monitoring\n")
 
             while True:
                 # Get active stores and keywords from database
@@ -57,7 +65,6 @@ async def main():
 
                 print(f"Starting monitor for {len(active_stores)} stores")
                 print(f"Monitoring for keywords: {', '.join(active_keywords)}")
-                print("Press Ctrl+C to stop monitoring\n")
 
                 tasks = []
                 for store_url in active_stores:
