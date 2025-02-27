@@ -21,7 +21,7 @@ user_seen_products: Dict[int, Dict[str, float]] = {}
 PRODUCT_TTL = 3600  # 1 hour TTL for seen products
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
-                       webhook: DiscordWebhook, seen_products: Dict[str, float], user_id: int):
+                       webhook: RateLimitedDiscordWebhook, seen_products: Dict[str, float], user_id: int):
     """Monitors a single store for products with improved error handling"""
     try:
         products = monitor.fetch_products(store_url, keywords)
@@ -36,20 +36,10 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
                 if product_identifier not in seen_products or (current_time - seen_products[product_identifier]) > PRODUCT_TTL:
                     logger.info(f"[User {user_id}] New product found on {store_url}: {product['title']}")
 
-                    # Add retry logic for webhook
-                    max_webhook_retries = 3
-                    for attempt in range(max_webhook_retries):
-                        try:
-                            webhook.send_product_notification(product)
-                            seen_products[product_identifier] = current_time
-                            new_products += 1
-                            break
-                        except Exception as webhook_error:
-                            if attempt == max_webhook_retries - 1:
-                                logger.error(f"Failed to send webhook after {max_webhook_retries} attempts")
-                            else:
-                                logger.warning(f"Webhook attempt {attempt + 1} failed, retrying...")
-                                await asyncio.sleep(1)  # Brief pause before retry
+                    # Queue the webhook notification
+                    webhook.send_product_notification(product)
+                    seen_products[product_identifier] = current_time
+                    new_products += 1
 
             except Exception as product_error:
                 logger.error(f"Error processing product from {store_url}: {product_error}")
@@ -157,7 +147,7 @@ async def main():
                             continue
 
                         # Process stores in smaller batches with adaptive delay
-                        batch_size = min(3, len(active_stores))  # Further reduced batch size
+                        batch_size = min(3, len(active_stores))  # Small batch size to prevent rate limits
                         all_results = []
 
                         for i in range(0, len(active_stores), batch_size):
