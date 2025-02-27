@@ -21,7 +21,7 @@ user_seen_products: Dict[int, Dict[str, float]] = {}
 PRODUCT_TTL = 3600  # 1 hour TTL for seen products
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
-                       webhook: RateLimitedDiscordWebhook, seen_products: Dict[str, float], user_id: int):
+                        webhook: RateLimitedDiscordWebhook, seen_products: Dict[str, float], user_id: int):
     """Monitors a single store for products with improved error handling"""
     try:
         products = monitor.fetch_products(store_url, keywords)
