@@ -14,7 +14,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
-# Make seen_products user-specific
+# Dictionary to store seen products per user
 user_seen_products: Dict[int, Set[str]] = {}
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
@@ -40,13 +40,18 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
 
 async def main():
     try:
-        with app.app_context():
-            # Get the specific user ID from environment
-            user_id = int(os.getenv('MONITOR_USER_ID'))
-            if not user_id:
-                print("Error: MONITOR_USER_ID not set")
-                sys.exit(1)
+        # Extract user ID from command line arguments
+        user_id = None
+        for arg in sys.argv[1:]:
+            if arg.startswith("MONITOR_USER_ID="):
+                user_id = int(arg.split("=")[1])
+                break
 
+        if not user_id:
+            print("Error: MONITOR_USER_ID not provided")
+            sys.exit(1)
+
+        with app.app_context():
             # Get the specific user
             user = User.query.get(user_id)
             if not user or not user.enabled:
@@ -68,26 +73,26 @@ async def main():
             # Initialize webhook
             webhook = DiscordWebhook(webhook_url=user.discord_webhook_url)
 
-            print(f"Starting monitor for user {user.username}")
+            print(f"Starting monitor for user {user.username} (ID: {user_id})")
 
             while True:
                 # Get user's active stores and keywords
-                active_stores = [store.url for store in Store.query.filter_by(user_id=user_id, enabled=True).all()]
-                active_keywords = [kw.word for kw in Keyword.query.filter_by(user_id=user_id, enabled=True).all()]
+                active_stores = Store.query.filter_by(user_id=user_id, enabled=True).all()
+                active_keywords = Keyword.query.filter_by(user_id=user_id, enabled=True).all()
 
                 print(f"\nProcessing stores for user {user.username}:")
                 print(f"- Active stores: {len(active_stores)}")
-                print(f"- Active keywords: {', '.join(active_keywords)}")
+                print(f"- Active keywords: {', '.join(kw.word for kw in active_keywords)}")
                 print(f"- Webhook URL configured: {'Yes' if user.discord_webhook_url else 'No'}")
 
                 tasks = []
-                for store_url in active_stores:
+                for store in active_stores:
                     task = asyncio.create_task(
                         monitor_store(
-                            store_url, 
-                            active_keywords, 
-                            monitor, 
-                            webhook, 
+                            store.url,
+                            [kw.word for kw in active_keywords],
+                            monitor,
+                            webhook,
                             user_seen_products[user_id],
                             user_id
                         )
