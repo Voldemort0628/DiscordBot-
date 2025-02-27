@@ -49,6 +49,7 @@ class UserMonitor:
                             continue
 
                         print(f"User {self.user_id} monitoring {len(stores)} stores")
+                        print(f"Active stores: {[store.url for store in stores]}")
                         print(f"Active keywords: {[k.word for k in keywords]}")
 
                         for store in stores:
@@ -127,5 +128,5 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
 
-    # ALWAYS serve the app on port 3000
+    print("Starting monitor service on port 3000...")
     app.run(host='0.0.0.0', port=3000)

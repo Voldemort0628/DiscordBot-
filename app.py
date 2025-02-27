@@ -20,15 +20,12 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # Configure monitor service URL based on environment
+print("Configuring monitor service URL...")
 REPLIT_SLUG = os.environ.get('REPL_SLUG')
 REPLIT_OWNER = os.environ.get('REPL_OWNER')
-if REPLIT_SLUG and REPLIT_OWNER:
-    # In production, use the monitor subdomain
-    MONITOR_SERVICE_URL = f"https://{REPLIT_SLUG}-3000.{REPLIT_OWNER}.repl.co"
-else:
-    MONITOR_SERVICE_URL = "http://localhost:3000"
+MONITOR_SERVICE_URL = f"https://{REPLIT_SLUG}.{REPLIT_OWNER}.repl.co"
 
-print(f"Monitor service URL: {MONITOR_SERVICE_URL}")  # Debug log
+print(f"Monitor service URL: {MONITOR_SERVICE_URL}")
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -38,11 +35,11 @@ def is_monitor_running():
     """Check if the monitor is running for the current user"""
     try:
         status_url = f"{MONITOR_SERVICE_URL}/status/{current_user.id}"
-        print(f"Checking monitor status at: {status_url}")  # Debug log
-        response = requests.get(status_url, timeout=5)
+        print(f"Checking monitor status at: {status_url}")
+        response = requests.get(status_url, timeout=10)
         if response.status_code == 200:
             status = response.json().get('status') == 'running'
-            print(f"Monitor status: {status}")  # Debug log
+            print(f"Monitor status: {status}")
             return status
         print(f"Status check failed with code: {response.status_code}")
         return False
@@ -57,19 +54,23 @@ def toggle_monitor():
     action = 'start' if not is_monitor_running() else 'stop'
     try:
         monitor_url = f"{MONITOR_SERVICE_URL}/{action}_monitor/{current_user.id}"
-        print(f"Sending monitor {action} request to: {monitor_url}")  # Debug log
-        response = requests.get(monitor_url, timeout=5)
+        print(f"Sending monitor {action} request to: {monitor_url}")
+        response = requests.get(monitor_url, timeout=10)
         response.raise_for_status()
         flash(f'Monitor {action}ed successfully')
     except requests.exceptions.RequestException as e:
         error_msg = f'Error toggling monitor: {str(e)}'
-        print(error_msg)  # Debug log
+        print(error_msg)
         flash(error_msg, 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/')
 @login_required
 def dashboard():
+    # Get user's stores and keywords
+    stores = Store.query.filter_by(added_by=current_user.id).all()
+    keywords = Keyword.query.filter_by(added_by=current_user.id).all()
+
     # Ensure user has config
     config = MonitorConfig.query.filter_by(user_id=current_user.id).first()
     if not config:
@@ -82,12 +83,10 @@ def dashboard():
         db.session.add(config)
         db.session.commit()
 
-    # Get user's stores and keywords
-    stores = Store.query.filter_by(added_by=current_user.id).all()
-    keywords = Keyword.query.filter_by(added_by=current_user.id).all()
-
     # Debug logging
     print(f"User {current_user.id} has {len(stores)} stores and {len(keywords)} keywords")
+    print(f"Stores: {[store.url for store in stores]}")
+    print(f"Keywords: {[keyword.word for keyword in keywords]}")
 
     monitor_running = is_monitor_running()
     return render_template('dashboard.html',
@@ -112,12 +111,11 @@ def login():
 @app.route('/logout')
 @login_required
 def logout():
-    # Stop the user's monitor if it's running
-    if is_monitor_running():
-        try:
+    try:
+        if is_monitor_running():
             requests.get(f"{MONITOR_SERVICE_URL}/stop_monitor/{current_user.id}", timeout=5)
-        except Exception as e:
-            print(f"Error stopping monitor during logout: {e}")
+    except Exception as e:
+        print(f"Error stopping monitor during logout: {e}")
     logout_user()
     return redirect(url_for('login'))
 
