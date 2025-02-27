@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 import json
 import time
 import random
+import urllib.parse
 
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -56,6 +57,17 @@ class RetailScraper:
         """Add random delay between requests"""
         time.sleep(random.uniform(2, 4))
 
+    def _init_session(self, base_url: str, referrers: List[str]):
+        """Initialize session with proper cookies and headers"""
+        # Visit multiple pages to build up cookies and seem more human-like
+        for referrer in referrers:
+            try:
+                full_url = f"{base_url}{referrer}"
+                self.session.get(full_url, timeout=10)
+                self._add_delay()
+            except Exception as e:
+                print(f"Error initializing session at {full_url}: {e}")
+
     def scrape_target(self, keyword: str) -> List[RetailScrapeResult]:
         """Scrape Target for Pokemon products"""
         results = []
@@ -64,70 +76,78 @@ class RetailScraper:
         try:
             print(f"Scraping Target for keyword: {keyword}")
 
-            # Initialize session with homepage first
+            # Initialize session with multiple page visits
             base_url = "https://www.target.com"
-            self.session.get(base_url)
-            self._add_delay()
+            referrers = [
+                "/",
+                "/s?category=5xt1a",  # Toys category
+                "/s?category=54hza"   # Games category
+            ]
+            self._init_session(base_url, referrers)
 
             # Add Target-specific headers
             headers = {
-                'Referer': 'https://www.target.com',
+                'Referer': 'https://www.target.com/c/toys-games/-/N-5xtb0',
                 'Origin': 'https://www.target.com',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'X-Requested-With': 'XMLHttpRequest'
             }
             self.session.headers.update(headers)
 
             # Make the search request
-            search_url = f"{base_url}/s?searchTerm={keyword}"
+            search_url = f"{base_url}/s?searchTerm={urllib.parse.quote(keyword)}"
             response = self.session.get(search_url, timeout=15)
             print(f"Target response status: {response.status_code}")
 
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
+                product_containers = soup.find_all(['div', 'li'], {
+                    'class': lambda x: x and any(c in str(x).lower() for c in [
+                        'productscontainer',
+                        'productcontainer',
+                        'product-card',
+                        'styles__StyledCol'
+                    ])
+                })
 
-                # Try multiple possible product container selectors
-                products = (
-                    soup.find_all('div', {'data-test': 'product-card'}) or
-                    soup.find_all('div', {'data-test': 'productCard'}) or
-                    soup.find_all('div', {'class': 'styles__StyledCol-sc-fw90uk-0'})
-                )
+                print(f"Found {len(product_containers)} potential products on Target")
 
-                print(f"Found {len(products)} potential products on Target")
-
-                for product in products:
+                for container in product_containers:
                     try:
-                        # Try multiple possible title selectors
-                        title_elem = (
-                            product.find('a', {'data-test': 'product-title'}) or
-                            product.find('a', {'data-test': 'product-link'}) or
-                            product.find('div', {'data-test': 'product-title'})
-                        )
+                        # Find title using multiple methods
+                        title_elem = None
+                        for selector in [
+                            {'data-test': 'product-title'},
+                            {'class': 'Heading__StyledHeading'},
+                            {'class': 'h-display-flex'}
+                        ]:
+                            title_elem = container.find(['a', 'div', 'span'], selector)
+                            if title_elem:
+                                break
 
-                        # Try multiple possible price selectors
-                        price_elem = (
-                            product.find('span', {'data-test': 'product-price'}) or
-                            product.find('span', {'data-test': 'current-price'}) or
-                            product.find('div', {'data-test': 'product-price'})
-                        )
+                        # Find price using multiple methods
+                        price_elem = None
+                        for selector in [
+                            {'data-test': 'product-price'},
+                            {'class': 'h-text-bs'},
+                            {'class': 'ProductPriceDetails'}
+                        ]:
+                            price_elem = container.find(['span', 'div'], selector)
+                            if price_elem:
+                                break
 
-                        if title_elem and price_elem:
+                        if title_elem and price_elem and 'pokemon' in title_elem.text.lower():
                             title = title_elem.text.strip()
+                            price = self._clean_price(price_elem.text)
 
-                            # Only process Pokemon-related items
-                            if 'pokemon' in title.lower():
-                                price = self._clean_price(price_elem.text)
+                            # Get URL - either from title element or find separately
+                            url_elem = title_elem if title_elem.name == 'a' else container.find('a')
+                            if url_elem and 'href' in url_elem.attrs:
+                                product_url = base_url + url_elem['href'] if not url_elem['href'].startswith('http') else url_elem['href']
 
-                                # Get URL from title element or parent
-                                url_elem = title_elem if title_elem.name == 'a' else title_elem.find_parent('a')
-                                product_url = base_url + url_elem['href'] if url_elem else None
-
-                                # Try multiple possible image selectors
-                                img_elem = (
-                                    product.find('img', {'data-test': 'product-image'}) or
-                                    product.find('img', {'class': 'styles__ProductImage'}) or
-                                    product.find('img')
-                                )
-                                image_url = img_elem['src'] if img_elem else None
+                                # Find image URL
+                                img_elem = container.find('img')
+                                image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
 
                                 if product_url:
                                     result = RetailScrapeResult(
@@ -139,9 +159,11 @@ class RetailScraper:
                                     )
                                     results.append(result)
                                     print(f"Added Target product: {title} at ${price}")
+
                     except Exception as e:
                         print(f"Error processing Target product: {e}")
                         continue
+
         except Exception as e:
             print(f"Error scraping Target: {e}")
 
@@ -155,72 +177,84 @@ class RetailScraper:
         try:
             print(f"Scraping Walmart for keyword: {keyword}")
 
-            # Initialize session with homepage first
-            self.session.get("https://www.walmart.com")
-            self._add_delay()
+            # Initialize session with multiple page visits
+            base_url = "https://www.walmart.com"
+            referrers = [
+                "/",
+                "/browse/toys/235762",
+                "/browse/games/4171"
+            ]
+            self._init_session(base_url, referrers)
 
-            # Add Walmart-specific headers
+            # Add Walmart-specific headers with dynamic values
             headers = {
-                'Referer': 'https://www.walmart.com',
+                'Referer': 'https://www.walmart.com/browse/toys/235762',
                 'Origin': 'https://www.walmart.com',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'sec-ch-ua': '" Not A;Brand";v="99", "Chromium";v="96"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"'
             }
             self.session.headers.update(headers)
 
-            search_url = f"https://www.walmart.com/search?q={keyword}"
+            search_url = f"{base_url}/search?q={urllib.parse.quote(keyword)}"
             response = self.session.get(search_url, timeout=15)
             print(f"Walmart response status: {response.status_code}")
 
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
 
-                # Try multiple possible product container selectors
-                products = (
-                    soup.find_all('div', {'data-item-id': True}) or
-                    soup.find_all('div', {'class': 'mb1 ph1 pa0-xl bb b--near-white w-25'}) or
-                    soup.find_all('div', {'class': 'flex flex-wrap w-100 flex-grow-0 flex-shrink-0 ph2 pr0-xl pl4-xl mt0-xl mt3'})
-                )
+                # Try multiple container patterns
+                product_containers = []
+                for selector in [
+                    {'data-item-id': True},
+                    {'data-element-id': 'product-item'},
+                    {'class': 'mb1 ph1 pa0-xl bb b--near-white w-25'}
+                ]:
+                    containers = soup.find_all('div', selector)
+                    if containers:
+                        product_containers.extend(containers)
+                        break
 
-                print(f"Found {len(products)} potential products on Walmart")
+                print(f"Found {len(product_containers)} potential products on Walmart")
 
-                for product in products:
+                for container in product_containers:
                     try:
-                        # Try multiple possible title selectors
-                        title_elem = (
-                            product.find('span', {'data-automation-id': 'product-title'}) or
-                            product.find('span', {'class': 'w_V_DM'}) or
-                            product.find('span', {'class': 'lh-title'})
-                        )
+                        # Multiple selectors for title
+                        title_elem = None
+                        for selector in [
+                            {'data-automation-id': 'product-title'},
+                            {'class': 'w_V_DM'},
+                            {'class': 'lh-title'}
+                        ]:
+                            title_elem = container.find(['span', 'div'], selector)
+                            if title_elem:
+                                break
 
-                        # Try multiple possible price selectors
-                        price_elem = (
-                            product.find('div', {'data-automation-id': 'product-price'}) or
-                            product.find('div', {'class': 'b black f5 mr1 mr2-xl lh-copy f4-l'}) or
-                            product.find('div', {'class': 'flex flex-wrap justify-start items-center lh-title mb2 mb1-m'})
-                        )
+                        # Multiple selectors for price
+                        price_elem = None
+                        for selector in [
+                            {'data-automation-id': 'product-price'},
+                            {'class': 'b black f5 mr1 mr2-xl lh-copy f4-l'},
+                            {'class': 'price-main'}
+                        ]:
+                            price_elem = container.find(['div', 'span'], selector)
+                            if price_elem:
+                                break
 
-                        if title_elem and price_elem:
+                        if title_elem and price_elem and 'pokemon' in title_elem.text.lower():
                             title = title_elem.text.strip()
+                            price = self._clean_price(price_elem.text)
 
-                            # Only process Pokemon-related items
-                            if 'pokemon' in title.lower():
-                                price = self._clean_price(price_elem.text)
+                            # Find product URL
+                            url_elem = container.find('a', href=True)
+                            if url_elem:
+                                product_url = f"{base_url}{url_elem['href']}" if not url_elem['href'].startswith('http') else url_elem['href']
 
-                                # Try multiple possible link selectors
-                                link_elem = (
-                                    product.find('a', {'link-identifier': 'linkText'}) or
-                                    product.find('a', {'class': 'absolute w-100 h-100 z-1 hide-sibling-opacity'}) or
-                                    product.find('a')
-                                )
-                                product_url = f"https://www.walmart.com{link_elem['href']}" if link_elem else None
-
-                                # Try multiple possible image selectors
-                                img_elem = (
-                                    product.find('img', {'data-automation-id': 'product-image'}) or
-                                    product.find('img', {'class': 'absolute top-0 left-0'}) or
-                                    product.find('img')
-                                )
-                                image_url = img_elem['src'] if img_elem else None
+                                # Find image
+                                img_elem = container.find('img')
+                                image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
 
                                 if product_url:
                                     result = RetailScrapeResult(
@@ -232,9 +266,11 @@ class RetailScraper:
                                     )
                                     results.append(result)
                                     print(f"Added Walmart product: {title} at ${price}")
+
                     except Exception as e:
                         print(f"Error processing Walmart product: {e}")
                         continue
+
         except Exception as e:
             print(f"Error scraping Walmart: {e}")
 
@@ -248,77 +284,85 @@ class RetailScraper:
         try:
             print(f"Scraping Best Buy for keyword: {keyword}")
 
-            # Initialize session with homepage first
-            self.session.get("https://www.bestbuy.com")
-            self._add_delay()
+            # Initialize session with multiple page visits
+            base_url = "https://www.bestbuy.com"
+            referrers = [
+                "/",
+                "/site/video-games/nintendo-switch-games/pcmcat1484080052161.c",
+                "/site/toys-games-and-collectibles/toys-and-collectibles/pcmcat252700050006.c"
+            ]
+            self._init_session(base_url, referrers)
 
             # Add Best Buy specific headers
             headers = {
-                'Referer': 'https://www.bestbuy.com',
+                'Referer': 'https://www.bestbuy.com/site/toys-games-and-collectibles/toys-and-collectibles/pcmcat252700050006.c',
                 'Origin': 'https://www.bestbuy.com',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'X-Requested-With': 'XMLHttpRequest',
                 'sec-ch-ua': '" Not A;Brand";v="99", "Chromium";v="96"',
                 'sec-ch-ua-mobile': '?0',
                 'sec-ch-ua-platform': '"Windows"'
             }
             self.session.headers.update(headers)
 
-            search_url = f"https://www.bestbuy.com/site/searchpage.jsp?st={keyword}&cp=1"
+            search_url = f"{base_url}/site/searchpage.jsp?st={urllib.parse.quote(keyword)}&cp=1"
             response = self.session.get(search_url, timeout=15)
             print(f"Best Buy response status: {response.status_code}")
 
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
 
-                # Try multiple possible product container selectors
-                products = (
-                    soup.find_all('li', {'class': 'sku-item'}) or
-                    soup.find_all('div', {'class': 'shop-sku-list-item'}) or
-                    soup.find_all('div', {'class': 'list-item'})
-                )
+                # Try multiple container patterns
+                product_containers = []
+                for selector in [
+                    {'class': 'sku-item'},
+                    {'class': 'shop-sku-list-item'},
+                    {'class': 'list-item'}
+                ]:
+                    containers = soup.find_all(['li', 'div'], selector)
+                    if containers:
+                        product_containers.extend(containers)
+                        break
 
-                print(f"Found {len(products)} potential products on Best Buy")
+                print(f"Found {len(product_containers)} potential products on Best Buy")
 
-                for product in products:
+                for container in product_containers:
                     try:
-                        # Try multiple possible title selectors
-                        title_elem = (
-                            product.find('h4', {'class': 'sku-header'}) or
-                            product.find('h4', {'class': 'sku-title'}) or
-                            product.find('div', {'class': 'sku-title'})
-                        )
+                        # Multiple selectors for title
+                        title_elem = None
+                        for selector in [
+                            {'class': 'sku-header'},
+                            {'class': 'sku-title'},
+                            {'class': 'heading-5 v-fw-regular'}
+                        ]:
+                            title_elem = container.find(['h4', 'div'], selector)
+                            if title_elem:
+                                break
 
-                        # Try multiple possible price selectors
-                        price_elem = (
-                            product.find('div', {'class': 'priceView-customer-price'}) or
-                            product.find('div', {'class': 'priceView-hero-price'}) or
-                            product.find('span', {'class': 'sr-only'}, string=lambda x: x and 'current price' in x.lower())
-                        )
+                        # Multiple selectors for price
+                        price_elem = None
+                        for selector in [
+                            {'class': 'priceView-customer-price'},
+                            {'class': 'priceView-hero-price'},
+                            {'class': 'price-block'}
+                        ]:
+                            price_elem = container.find('div', selector)
+                            if price_elem:
+                                break
 
-                        if title_elem and price_elem:
+                        if title_elem and price_elem and 'pokemon' in title_elem.text.lower():
                             title = title_elem.text.strip()
+                            price_text = price_elem.find('span').text if price_elem.find('span') else price_elem.text
+                            price = self._clean_price(price_text)
 
-                            # Only process Pokemon-related items
-                            if 'pokemon' in title.lower():
-                                # Handle different price element structures
-                                price_text = price_elem.find('span').text if price_elem.find('span') else price_elem.text
-                                price = self._clean_price(price_text)
+                            # Find product URL
+                            url_elem = container.find('a', href=True)
+                            if url_elem:
+                                product_url = f"{base_url}{url_elem['href']}" if not url_elem['href'].startswith('http') else url_elem['href']
 
-                                # Try multiple possible link selectors
-                                link_elem = (
-                                    product.find('a', {'class': 'image-link'}) or
-                                    product.find('a', {'class': 'product-image'}) or
-                                    product.find('a')
-                                )
-                                product_url = f"https://www.bestbuy.com{link_elem['href']}" if link_elem else None
-
-                                # Try multiple possible image selectors
-                                img_elem = (
-                                    product.find('img', {'class': 'product-image'}) or
-                                    product.find('img', {'class': 'thumb'}) or
-                                    product.find('img')
-                                )
-                                image_url = img_elem['src'] if img_elem else None
+                                # Find image
+                                img_elem = container.find('img')
+                                image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
 
                                 if product_url:
                                     result = RetailScrapeResult(
@@ -330,9 +374,11 @@ class RetailScraper:
                                     )
                                     results.append(result)
                                     print(f"Added Best Buy product: {title} at ${price}")
+
                     except Exception as e:
                         print(f"Error processing Best Buy product: {e}")
                         continue
+
         except Exception as e:
             print(f"Error scraping Best Buy: {e}")
 
