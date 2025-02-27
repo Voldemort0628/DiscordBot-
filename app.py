@@ -229,21 +229,26 @@ def create_app():
                             'main.py' in cmdline and 
                             f"MONITOR_USER_ID={current_user.id}" in cmdline):
                             process = psutil.Process(proc.info['pid'])
-                            process.kill()
-                            time.sleep(0.5)
+                            process.terminate()
+                            process.wait(timeout=3)  # Wait for graceful shutdown
                             flash('Monitor stopped successfully')
                             break
-                    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired) as e:
                         print(f"Error terminating process for user {current_user.id}: {e}")
+                        # If timeout, force kill
+                        try:
+                            process.kill()
+                        except:
+                            pass
             else:
                 # Start a new monitor process for this user
                 env = os.environ.copy()
-                env['MONITOR_USER_ID'] = str(current_user.id)
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
 
+                # Use command line argument for better process identification
                 cmd = ['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"]
-                subprocess.Popen(cmd, env=env)
-                time.sleep(1)
+                subprocess.Popen(cmd, env=env, start_new_session=True)  # Run in new session
+                time.sleep(1)  # Brief pause to allow process to start
 
                 if is_monitor_running(current_user.id):
                     flash('Monitor started successfully')

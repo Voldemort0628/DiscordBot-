@@ -5,14 +5,7 @@ from typing import Dict, List, Set
 import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import DiscordWebhook
-from config import MONITOR_DELAY
-from flask import Flask
 from models import db, User, Store, Keyword, MonitorConfig
-
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
 
 # Dictionary to store seen products per user
 user_seen_products: Dict[int, Set[str]] = {}
@@ -51,6 +44,11 @@ async def main():
             print("Error: MONITOR_USER_ID not provided")
             sys.exit(1)
 
+        print(f"Starting monitor for user ID: {user_id}")
+
+        from app import create_app
+        app = create_app()
+
         with app.app_context():
             # Get the specific user
             user = User.query.get(user_id)
@@ -70,10 +68,13 @@ async def main():
             if user_id not in user_seen_products:
                 user_seen_products[user_id] = set()
 
-            # Initialize webhook
+            # Initialize webhook with user's configuration
             webhook = DiscordWebhook(webhook_url=user.discord_webhook_url)
 
             print(f"Starting monitor for user {user.username} (ID: {user_id})")
+            print(f"- Discord Webhook: {'Configured' if user.discord_webhook_url else 'Not configured'}")
+            print(f"- Rate limit: {config.rate_limit} req/s")
+            print(f"- Monitor delay: {config.monitor_delay}s")
 
             while True:
                 # Get user's active stores and keywords
@@ -83,7 +84,6 @@ async def main():
                 print(f"\nProcessing stores for user {user.username}:")
                 print(f"- Active stores: {len(active_stores)}")
                 print(f"- Active keywords: {', '.join(kw.word for kw in active_keywords)}")
-                print(f"- Webhook URL configured: {'Yes' if user.discord_webhook_url else 'No'}")
 
                 tasks = []
                 for store in active_stores:
@@ -112,7 +112,7 @@ async def main():
         print("\nMonitoring stopped by user")
         sys.exit(0)
     except Exception as e:
-        print(f"Fatal error: {e}")
+        print(f"Fatal error in monitor: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
