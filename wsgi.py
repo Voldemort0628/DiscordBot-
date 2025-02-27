@@ -4,6 +4,7 @@ from app import create_app
 from models import db, User
 from werkzeug.security import generate_password_hash
 from process_manager import ProcessManager
+import time
 
 def init_database(app):
     """Initialize database and create admin user if needed"""
@@ -38,11 +39,18 @@ def main():
         ProcessManager.register_shutdown_handler()
 
         # Clean up existing processes on port 5000
-        if not ProcessManager.cleanup_port():
-            print("Warning: Could not clean up port 5000")
+        cleanup_attempts = 3
+        for attempt in range(cleanup_attempts):
+            if ProcessManager.cleanup_port():
+                break
+            print(f"Cleanup attempt {attempt + 1}/{cleanup_attempts} failed, retrying...")
+            time.sleep(2)
+        else:
+            print("Error: Could not clean up port 5000 after multiple attempts")
+            return None
 
-        # Wait for port to become available
-        if not ProcessManager.wait_for_port_available():
+        # Double check port availability with increased timeout
+        if not ProcessManager.wait_for_port_available(timeout=45):
             print("Error: Port 5000 is still in use after cleanup")
             sys.exit(1)
 
@@ -64,4 +72,8 @@ def main():
 app = main()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    if app:
+        app.run(host='0.0.0.0', port=5000)
+    else:
+        print("Error: Application failed to initialize properly")
+        sys.exit(1)

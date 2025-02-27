@@ -164,6 +164,7 @@ class ShopifyMonitor:
     def _process_product(self, store_url: str, product: Dict) -> Dict:
         """
         Processes raw product data into formatted structure
+        Returns empty dict if processing fails
         """
         try:
             variants = product.get("variants", [])
@@ -191,4 +192,4 @@ class ShopifyMonitor:
             }
         except Exception as e:
             print(f"Error processing product {product.get('title', 'Unknown')}: {e}")
-            return None
+            return {}  # Return empty dict instead of None to match return type

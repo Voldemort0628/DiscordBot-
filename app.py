@@ -256,31 +256,37 @@ def create_app():
         form = VariantScraperForm()
         variants = None
         cart_url = None
-        
+
         if form.validate_on_submit():
             try:
                 from shopify_monitor import ShopifyMonitor
                 monitor = ShopifyMonitor()
                 product_url = form.product_url.data
-                
-                if not product_url.startswith('http'):
+
+                # Input validation
+                if not product_url:
+                    flash('Please enter a valid product URL', 'error')
+                    return render_template('variants.html', form=form)
+
+                # Ensure URL has protocol
+                if not product_url.lower().startswith(('http://', 'https://')):
                     product_url = 'https://' + product_url
-                
+
                 # Extract domain for cart URL
                 from urllib.parse import urlparse
                 parsed_url = urlparse(product_url)
                 cart_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                
+
                 # Get variants
                 variants_data = monitor.get_product_variants(product_url)
                 variants = variants_data.get('variants', [])
-                
+
                 if not variants:
                     flash('No variants found or error accessing product data', 'warning')
             except Exception as e:
                 flash(f'Error scraping variants: {str(e)}', 'error')
                 print(f"Error in variant scraper: {e}")
-        
+
         return render_template('variants.html', form=form, variants=variants, cart_url=cart_url)
 
     @app.route('/toggle_monitor', methods=['POST'])
