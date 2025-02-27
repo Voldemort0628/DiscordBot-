@@ -153,6 +153,12 @@ async def main():
                         
                     except Exception as e:
                         print(f"Error in monitor cycle: {e}")
+                        # Explicitly rollback any uncommitted transactions
+                        try:
+                            db.session.rollback()
+                            print("Database transaction rolled back")
+                        except Exception as rollback_error:
+                            print(f"Error rolling back transaction: {rollback_error}")
                         # Sleep briefly before next cycle
                         await asyncio.sleep(5)
 
@@ -163,6 +169,13 @@ async def main():
             retry_count += 1
             print(f"Fatal error in monitor: {e}")
             print(f"Retry {retry_count}/{max_retries}")
+            
+            # Ensure any open database transactions are rolled back
+            try:
+                db.session.rollback()
+                print("Database transaction rolled back")
+            except Exception as rollback_error:
+                print(f"Error rolling back transaction: {rollback_error}")
             
             if retry_count >= max_retries:
                 print("Maximum retries reached. Exiting monitor.")
