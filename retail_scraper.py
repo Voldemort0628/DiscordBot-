@@ -6,6 +6,7 @@ import json
 import time
 import random
 import urllib.parse
+from bot_detection_ml import MLBasedBotBypass
 
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -25,9 +26,40 @@ class RetailScrapeResult:
 class RetailScraper:
     def __init__(self):
         self.session = requests.Session()
+        self.ml_bypass = MLBasedBotBypass()
         self._rotate_user_agent()
         self.retry_counts = {}
         self.rate_limit = 1.0
+
+    def _make_request(self, url: str, referrer: Optional[str] = None) -> requests.Response:
+        """Make a request with ML-based bot detection bypass"""
+        # Generate timing for request
+        delay = self.ml_bypass.generate_request_timing('page_load')
+        time.sleep(delay)
+
+        # Simulate user behavior before request
+        behaviors = self.ml_bypass.simulate_user_behavior()
+        for behavior in behaviors:
+            time.sleep(behavior['timestamp'] - (0 if not behaviors else behaviors[-1]['timestamp']))
+
+        # Get ML-optimized headers
+        headers = self.ml_bypass.get_request_headers()
+        if referrer:
+            headers['Referer'] = referrer
+
+        # Make the request
+        response = self.session.get(url, headers=headers, timeout=15)
+
+        # Analyze response and update patterns
+        analysis = self.ml_bypass.analyze_response(response.headers)
+        success = response.status_code == 200
+        self.ml_bypass.update_patterns(success, {
+            'status_code': response.status_code,
+            'headers': dict(response.headers),
+            'url': url
+        })
+
+        return response
 
     def _rotate_user_agent(self):
         """Randomly select a new User-Agent"""
@@ -58,46 +90,37 @@ class RetailScraper:
         time.sleep(random.uniform(2, 4))
 
     def _init_session(self, base_url: str, referrers: List[str]):
-        """Initialize session with proper cookies and headers"""
-        # Visit multiple pages to build up cookies and seem more human-like
+        """Initialize session with ML-based behavior patterns"""
         for referrer in referrers:
             try:
                 full_url = f"{base_url}{referrer}"
-                self.session.get(full_url, timeout=10)
-                self._add_delay()
+                self._make_request(full_url)
             except Exception as e:
                 print(f"Error initializing session at {full_url}: {e}")
 
     def scrape_target(self, keyword: str) -> List[RetailScrapeResult]:
-        """Scrape Target for Pokemon products"""
+        """Scrape Target with ML-based bot detection bypass"""
         results = []
         self._rotate_user_agent()
 
         try:
             print(f"Scraping Target for keyword: {keyword}")
-
-            # Initialize session with multiple page visits
             base_url = "https://www.target.com"
+
+            # Initialize session with ML-based behavior
             referrers = [
                 "/",
-                "/s?category=5xt1a",  # Toys category
-                "/s?category=54hza"   # Games category
+                "/s?category=5xt1a",
+                "/s?category=54hza"
             ]
             self._init_session(base_url, referrers)
 
-            # Add Target-specific headers
-            headers = {
-                'Referer': 'https://www.target.com/c/toys-games/-/N-5xtb0',
-                'Origin': 'https://www.target.com',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-            self.session.headers.update(headers)
-
-            # Make the search request
+            # Make the search request with ML bypass
             search_url = f"{base_url}/s?searchTerm={urllib.parse.quote(keyword)}"
-            response = self.session.get(search_url, timeout=15)
-            print(f"Target response status: {response.status_code}")
+            response = self._make_request(
+                search_url,
+                referrer='https://www.target.com/c/toys-games/-/N-5xtb0'
+            )
 
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
@@ -114,7 +137,6 @@ class RetailScraper:
 
                 for container in product_containers:
                     try:
-                        # Find title using multiple methods
                         title_elem = None
                         for selector in [
                             {'data-test': 'product-title'},
@@ -125,7 +147,6 @@ class RetailScraper:
                             if title_elem:
                                 break
 
-                        # Find price using multiple methods
                         price_elem = None
                         for selector in [
                             {'data-test': 'product-price'},
@@ -140,12 +161,10 @@ class RetailScraper:
                             title = title_elem.text.strip()
                             price = self._clean_price(price_elem.text)
 
-                            # Get URL - either from title element or find separately
                             url_elem = title_elem if title_elem.name == 'a' else container.find('a')
                             if url_elem and 'href' in url_elem.attrs:
                                 product_url = base_url + url_elem['href'] if not url_elem['href'].startswith('http') else url_elem['href']
 
-                                # Find image URL
                                 img_elem = container.find('img')
                                 image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
 
@@ -170,15 +189,15 @@ class RetailScraper:
         return results
 
     def scrape_walmart(self, keyword: str) -> List[RetailScrapeResult]:
-        """Scrape Walmart for Pokemon products"""
+        """Scrape Walmart with ML-based bot detection bypass"""
         results = []
         self._rotate_user_agent()
 
         try:
             print(f"Scraping Walmart for keyword: {keyword}")
-
-            # Initialize session with multiple page visits
             base_url = "https://www.walmart.com"
+
+            # Initialize session with ML-based behavior
             referrers = [
                 "/",
                 "/browse/toys/235762",
@@ -186,26 +205,16 @@ class RetailScraper:
             ]
             self._init_session(base_url, referrers)
 
-            # Add Walmart-specific headers with dynamic values
-            headers = {
-                'Referer': 'https://www.walmart.com/browse/toys/235762',
-                'Origin': 'https://www.walmart.com',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'X-Requested-With': 'XMLHttpRequest',
-                'sec-ch-ua': '" Not A;Brand";v="99", "Chromium";v="96"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"'
-            }
-            self.session.headers.update(headers)
-
+            # Make the search request with ML bypass
             search_url = f"{base_url}/search?q={urllib.parse.quote(keyword)}"
-            response = self.session.get(search_url, timeout=15)
-            print(f"Walmart response status: {response.status_code}")
+            response = self._make_request(
+                search_url,
+                referrer='https://www.walmart.com/browse/toys/235762'
+            )
 
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
 
-                # Try multiple container patterns
                 product_containers = []
                 for selector in [
                     {'data-item-id': True},
@@ -221,7 +230,6 @@ class RetailScraper:
 
                 for container in product_containers:
                     try:
-                        # Multiple selectors for title
                         title_elem = None
                         for selector in [
                             {'data-automation-id': 'product-title'},
@@ -232,7 +240,6 @@ class RetailScraper:
                             if title_elem:
                                 break
 
-                        # Multiple selectors for price
                         price_elem = None
                         for selector in [
                             {'data-automation-id': 'product-price'},
@@ -247,12 +254,10 @@ class RetailScraper:
                             title = title_elem.text.strip()
                             price = self._clean_price(price_elem.text)
 
-                            # Find product URL
                             url_elem = container.find('a', href=True)
                             if url_elem:
                                 product_url = f"{base_url}{url_elem['href']}" if not url_elem['href'].startswith('http') else url_elem['href']
 
-                                # Find image
                                 img_elem = container.find('img')
                                 image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
 
@@ -277,15 +282,15 @@ class RetailScraper:
         return results
 
     def scrape_bestbuy(self, keyword: str) -> List[RetailScrapeResult]:
-        """Scrape Best Buy for Pokemon products"""
+        """Scrape Best Buy with ML-based bot detection bypass"""
         results = []
         self._rotate_user_agent()
 
         try:
             print(f"Scraping Best Buy for keyword: {keyword}")
-
-            # Initialize session with multiple page visits
             base_url = "https://www.bestbuy.com"
+
+            # Initialize session with ML-based behavior
             referrers = [
                 "/",
                 "/site/video-games/nintendo-switch-games/pcmcat1484080052161.c",
@@ -293,26 +298,16 @@ class RetailScraper:
             ]
             self._init_session(base_url, referrers)
 
-            # Add Best Buy specific headers
-            headers = {
-                'Referer': 'https://www.bestbuy.com/site/toys-games-and-collectibles/toys-and-collectibles/pcmcat252700050006.c',
-                'Origin': 'https://www.bestbuy.com',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'X-Requested-With': 'XMLHttpRequest',
-                'sec-ch-ua': '" Not A;Brand";v="99", "Chromium";v="96"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"'
-            }
-            self.session.headers.update(headers)
-
+            # Make the search request with ML bypass
             search_url = f"{base_url}/site/searchpage.jsp?st={urllib.parse.quote(keyword)}&cp=1"
-            response = self.session.get(search_url, timeout=15)
-            print(f"Best Buy response status: {response.status_code}")
+            response = self._make_request(
+                search_url,
+                referrer='https://www.bestbuy.com/site/toys-games-and-collectibles/toys-and-collectibles/pcmcat252700050006.c'
+            )
 
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
 
-                # Try multiple container patterns
                 product_containers = []
                 for selector in [
                     {'class': 'sku-item'},
@@ -328,7 +323,6 @@ class RetailScraper:
 
                 for container in product_containers:
                     try:
-                        # Multiple selectors for title
                         title_elem = None
                         for selector in [
                             {'class': 'sku-header'},
@@ -339,7 +333,6 @@ class RetailScraper:
                             if title_elem:
                                 break
 
-                        # Multiple selectors for price
                         price_elem = None
                         for selector in [
                             {'class': 'priceView-customer-price'},
@@ -355,12 +348,10 @@ class RetailScraper:
                             price_text = price_elem.find('span').text if price_elem.find('span') else price_elem.text
                             price = self._clean_price(price_text)
 
-                            # Find product URL
                             url_elem = container.find('a', href=True)
                             if url_elem:
                                 product_url = f"{base_url}{url_elem['href']}" if not url_elem['href'].startswith('http') else url_elem['href']
 
-                                # Find image
                                 img_elem = container.find('img')
                                 image_url = img_elem['src'] if img_elem and 'src' in img_elem.attrs else None
 
