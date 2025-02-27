@@ -2,7 +2,7 @@ import psutil
 import time
 import sys
 import signal
-from typing import Optional
+from typing import Optional, List
 import logging
 
 # Configure logging
@@ -14,62 +14,70 @@ logger = logging.getLogger(__name__)
 
 class ProcessManager:
     @staticmethod
-    def find_process_by_port(port: int) -> Optional[psutil.Process]:
-        """Find process using specified port"""
+    def find_process_by_port(port: int, max_depth: int = 3) -> List[psutil.Process]:
+        """Find all processes using specified port"""
+        processes = []
         try:
             for conn in psutil.net_connections(kind='inet'):
-                # Safely handle connection objects
                 try:
                     if conn.laddr and len(conn.laddr) >= 2 and conn.laddr[1] == port:
                         proc = psutil.Process(conn.pid)
-                        logger.info(f"Found process {proc.pid} using port {port}")
-                        return proc
-                except (AttributeError, IndexError) as e:
-                    logger.error(f"Error processing connection: {e}")
+                        if proc.is_running():
+                            processes.append(proc)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
                     continue
-        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-            logger.error(f"Error finding process by port: {e}")
-        return None
+        except Exception as e:
+            logger.error(f"Error finding processes by port: {e}")
+        return processes
 
     @staticmethod
     def cleanup_port(port: int = 5000, timeout: int = 5) -> bool:
         """Clean up any process using the specified port"""
         try:
-            process = ProcessManager.find_process_by_port(port)
-            if process:
-                logger.info(f"Found process using port {port}: PID {process.pid}")
+            # Find all processes using the port
+            processes = ProcessManager.find_process_by_port(port)
+            if not processes:
+                logger.info(f"No processes found using port {port}")
+                return True
 
-                # Get process info before termination
+            success = True
+            for process in processes:
                 try:
-                    proc_info = f"Name: {process.name()}, Command: {' '.join(process.cmdline())}"
-                    logger.info(f"Process details - {proc_info}")
-                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                    logger.warning(f"Could not get process details: {e}")
+                    logger.info(f"Found process using port {port}: PID {process.pid}")
 
-                # Try graceful shutdown first
-                process.terminate()
-                try:
-                    # Wait for process to terminate
-                    gone, alive = psutil.wait_procs([process], timeout=timeout)
-                    if alive:
-                        logger.warning(f"Process {process.pid} still alive after terminate, force killing...")
-                        for p in alive:
-                            p.kill()
-                except psutil.TimeoutExpired:
-                    logger.warning(f"Process {process.pid} did not terminate gracefully, force killing...")
-                    process.kill()
-                except psutil.NoSuchProcess:
-                    logger.info(f"Process {process.pid} already terminated")
+                    # Get process info before termination
+                    try:
+                        proc_info = f"Name: {process.name()}, Command: {' '.join(process.cmdline())}"
+                        logger.info(f"Process details - {proc_info}")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
 
-                # Additional verification with increased wait time
-                time.sleep(2)  # Give OS time to fully release the port
-                if ProcessManager.find_process_by_port(port):
-                    logger.error(f"Warning: Port {port} still in use after cleanup attempt")
-                    return False
-                logger.info(f"Successfully terminated process on port {port}")
-            return True
+                    # Try graceful shutdown first
+                    if process.is_running():
+                        process.terminate()
+                        try:
+                            process.wait(timeout=timeout)
+                        except psutil.TimeoutExpired:
+                            logger.warning(f"Process {process.pid} did not terminate gracefully, force killing...")
+                            if process.is_running():
+                                process.kill()
+                                process.wait(timeout=2)
+                except Exception as e:
+                    logger.error(f"Error terminating process {process.pid}: {e}")
+                    success = False
+
+            # Verify port is actually free
+            time.sleep(1)  # Brief pause to let OS clean up
+            remaining = ProcessManager.find_process_by_port(port)
+            if remaining:
+                pids = [p.pid for p in remaining]
+                logger.error(f"Port {port} still in use by PIDs: {pids}")
+                return False
+
+            return success
+
         except Exception as e:
-            logger.error(f"Error cleaning up port {port}: {e}", exc_info=True)
+            logger.error(f"Error cleaning up port {port}: {e}")
             return False
 
     @staticmethod

@@ -54,6 +54,14 @@ author = 9248373
 task = "shell.exec"
 args = "python test_monitor.py"
 
+[[workflows.workflow]]
+name = "Check Monitor"
+author = 9248373
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python test_monitor.py"
+
 [deployment]
 run = ["sh", "-c", "gunicorn --workers 3 --worker-class gthread --threads 3 --timeout 120 --preload --max-requests 1000 --max-requests-jitter 50 --bind 0.0.0.0:5000 wsgi:app"]
 

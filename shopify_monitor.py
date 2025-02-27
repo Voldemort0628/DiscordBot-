@@ -1,12 +1,14 @@
 import requests
 import time
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 import random
 import logging
 import socket
 from urllib.parse import urlparse
 from requests.exceptions import RequestException
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 from logger_config import scraper_logger, log_scraping_error
 
@@ -67,23 +69,61 @@ class RateLimiter:
             if self.consecutive_429s == 0:
                 self.backoff_multiplier = max(1.0, self.backoff_multiplier * 0.75)
 
+class RetryWithProxy(Retry):
+    def __init__(self, *args, **kwargs):
+        self.proxy_list = kwargs.pop('proxy_list', [])
+        self.current_proxy_index = 0
+        super().__init__(*args, **kwargs)
+
+    def get_next_proxy(self):
+        if not self.proxy_list:
+            return None
+        proxy = self.proxy_list[self.current_proxy_index]
+        self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxy_list)
+        return proxy
+
+    def new(self, **kw):
+        new_retry = super().new(**kw)
+        new_retry.proxy_list = self.proxy_list
+        new_retry.current_proxy_index = self.current_proxy_index
+        return new_retry
+
 class ShopifyMonitor:
-    def __init__(self, rate_limit=0.5):
+    def __init__(self, rate_limit=0.5, proxy_list=None):
         self.session = requests.Session()
+
+        # Configure retry strategy with proxy rotation
+        retry_strategy = RetryWithProxy(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504],
+            proxy_list=proxy_list or []
+        )
+
+        # Configure connection pooling
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=100,
+            pool_maxsize=100
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
         self.session.headers.update({
             'User-Agent': USER_AGENT,
             'Accept': 'application/json',
             'Connection': 'keep-alive',
             'Accept-Encoding': 'gzip, deflate'
         })
+
         self.rate_limiter = RateLimiter(rate_limit)
         self.failed_stores = {}  # Store URL -> {last_failure: timestamp, failures: count, backoff: seconds}
         self.store_stats = {}
         self.dns_cache = {}
         self.dns_cache_ttl = 300  # 5 minutes TTL for DNS cache
 
-    def _validate_domain(self, url: str) -> bool:
-        """Validate domain accessibility with DNS lookup and caching"""
+    def _validate_domain(self, url: str, max_retries: int = 3) -> bool:
+        """Validate domain accessibility with DNS lookup, caching and retries"""
         try:
             parsed = urlparse(url)
             domain = parsed.netloc
@@ -95,15 +135,19 @@ class ShopifyMonitor:
             if cache_entry and current_time - cache_entry['timestamp'] < self.dns_cache_ttl:
                 return cache_entry['valid']
 
-            # Perform new DNS lookup
-            socket.gethostbyname(domain)
-            self.dns_cache[domain] = {'valid': True, 'timestamp': current_time}
-            return True
+            # Try DNS resolution with retries
+            for attempt in range(max_retries):
+                try:
+                    socket.gethostbyname(domain)
+                    self.dns_cache[domain] = {'valid': True, 'timestamp': current_time}
+                    return True
+                except socket.gaierror as e:
+                    if attempt == max_retries - 1:
+                        logger.error(f"DNS resolution failed for {url} after {max_retries} attempts: {e}")
+                        self.dns_cache[domain] = {'valid': False, 'timestamp': current_time}
+                        return False
+                    time.sleep(1 * (attempt + 1))  # Exponential backoff
 
-        except socket.gaierror as e:
-            logger.error(f"DNS resolution failed for {url}: {e}")
-            self.dns_cache[parsed.netloc] = {'valid': False, 'timestamp': current_time}
-            return False
         except Exception as e:
             logger.error(f"Domain validation error for {url}: {e}")
             return False
@@ -161,6 +205,7 @@ class ShopifyMonitor:
             return []
 
         try:
+            # Use a smaller initial limit for faster responses
             initial_limit = 50
             products_url = f"{store_url}/products.json?limit={initial_limit}"
 
@@ -184,8 +229,7 @@ class ShopifyMonitor:
 
             for product in data.get("products", []):
                 try:
-                    product_title_lower = product["title"].lower()
-                    if any(keyword in product_title_lower for keyword in lowercase_keywords):
+                    if any(keyword in product["title"].lower() for keyword in lowercase_keywords):
                         processed_product = self._process_product(store_url, product)
                         if processed_product:
                             matching_products.append(processed_product)
@@ -211,7 +255,7 @@ class ShopifyMonitor:
             })
             return []
 
-    def _process_product(self, store_url: str, product: Dict) -> Dict:
+    def _process_product(self, store_url: str, product: Dict) -> Optional[Dict]:
         """Process raw product data into formatted structure"""
         try:
             variants = product.get("variants", [])
@@ -239,7 +283,7 @@ class ShopifyMonitor:
                 'product_title': product.get('title', 'Unknown'),
                 'error_location': '_process_product'
             })
-            return {}
+            return None
 
     def _init_store_stats(self, store_url: str):
         """Initialize or reset statistics for a store"""
