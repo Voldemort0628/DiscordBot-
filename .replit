@@ -4,7 +4,7 @@ modules = ["python-3.11"]
 channel = "stable-24_05"
 
 [workflows]
-runButton = "Monitor"
+runButton = "Test Monitor"
 
 [[workflows.workflow]]
 name = "Project"
@@ -45,6 +45,14 @@ author = 9248373
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python run_webhook_test.py your-discord-webhook-url"
+
+[[workflows.workflow]]
+name = "Test Monitor"
+author = 9248373
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python test_monitor.py"
 
 [deployment]
 run = ["sh", "-c", "gunicorn --workers 3 --worker-class gthread --threads 3 --timeout 120 --preload --max-requests 1000 --max-requests-jitter 50 --bind 0.0.0.0:5000 wsgi:app"]
