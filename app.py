@@ -2,7 +2,7 @@ import asyncio
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig, RetailScraper, Proxy
-from forms import LoginForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm, ProxyForm, ProxyImportForm
+from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, RetailScraperForm, ProxyForm, ProxyImportForm
 from stores import SHOPIFY_STORES, DEFAULT_KEYWORDS
 from scrapers.target_scraper import TargetScraper  # Import the new Target scraper
 import os
@@ -325,6 +325,20 @@ def import_proxies():
         db.session.commit()
         flash(f'Successfully imported {added} proxies')
     return redirect(url_for('manage_proxies'))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        user = User(username=form.username.data)
+        user.set_password(form.password.data)
+        db.session.add(user)
+        db.session.commit()
+        flash('Registration successful! Please login.')
+        return redirect(url_for('login'))
+    return render_template('register.html', form=form)
 
 if __name__ == '__main__':
     with app.app_context():

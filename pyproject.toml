@@ -16,6 +16,7 @@ dependencies = [
     "psutil>=7.0.0",
     "psycopg2-binary>=2.9.10",
     "requests>=2.32.3",
+    "selenium>=4.29.0",
     "selenium-stealth>=1.0.6",
     "trafilatura>=2.0.0",
     "twilio>=9.4.6",
