@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField, SelectField
+from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField, SelectField, TextAreaField
 from wtforms.validators import DataRequired, URL, Optional, IPAddress, NumberRange, EqualTo, Length, ValidationError
-from models import User
+from models import User, ProxyGroup, ProxyList
 
 class RegistrationForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
@@ -52,6 +52,17 @@ class RetailScraperForm(FlaskForm):
     enabled = BooleanField('Enabled', default=True)
     submit = SubmitField('Add Scraper')
 
+class ProxyGroupForm(FlaskForm):
+    name = StringField('Group Name', validators=[DataRequired(), Length(min=1, max=100)])
+    description = TextAreaField('Description', validators=[Optional(), Length(max=500)])
+    submit = SubmitField('Create Group')
+
+class ProxyListForm(FlaskForm):
+    name = StringField('List Name', validators=[DataRequired(), Length(min=1, max=100)])
+    description = TextAreaField('Description', validators=[Optional(), Length(max=500)])
+    enabled = BooleanField('Enabled', default=True)
+    submit = SubmitField('Create List')
+
 class ProxyForm(FlaskForm):
     ip = StringField('IP Address', validators=[DataRequired(), IPAddress()])
     port = IntegerField('Port', validators=[DataRequired(), NumberRange(min=1, max=65535)])
@@ -67,8 +78,9 @@ class ProxyForm(FlaskForm):
     submit = SubmitField('Add Proxy')
 
 class ProxyImportForm(FlaskForm):
-    proxy_list = StringField('Proxy List (One per line, format: ip:port:user:pass or ip:port)', 
-                           validators=[DataRequired()])
+    proxy_list = TextAreaField('Proxy List (One proxy per line)',
+                           validators=[DataRequired()],
+                           description='Format: ip:port:username:password or ip:port')
     protocol = SelectField('Protocol', choices=[
         ('http', 'HTTP'),
         ('https', 'HTTPS'),

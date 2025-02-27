@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 
 db = SQLAlchemy()
 
@@ -15,7 +16,7 @@ class User(UserMixin, db.Model):
     stores = db.relationship('Store', backref='user', lazy=True)
     keywords = db.relationship('Keyword', backref='user', lazy=True)
     scrapers = db.relationship('RetailScraper', backref='user', lazy=True)
-    proxies = db.relationship('Proxy', backref='user', lazy=True)
+    proxy_groups = db.relationship('ProxyGroup', backref='user', lazy=True)
 
     def set_password(self, password):
         if not password:
@@ -59,6 +60,35 @@ class RetailScraper(db.Model):
     check_frequency = db.Column(db.Integer, default=3600)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
+class ProxyGroup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    # Relationships
+    proxy_lists = db.relationship('ProxyList', backref='group', lazy=True, cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('name', 'user_id', name='uix_proxygroup_name_user'),
+    )
+
+class ProxyList(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    enabled = db.Column(db.Boolean, default=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('proxy_group.id'), nullable=False)
+
+    # Relationships
+    proxies = db.relationship('Proxy', backref='list', lazy=True, cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('name', 'group_id', name='uix_proxylist_name_group'),
+    )
+
 class Proxy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ip = db.Column(db.String(45), nullable=False)
@@ -71,4 +101,4 @@ class Proxy(db.Model):
     success_count = db.Column(db.Integer, default=0)
     failure_count = db.Column(db.Integer, default=0)
     enabled = db.Column(db.Boolean, default=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    list_id = db.Column(db.Integer, db.ForeignKey('proxy_list.id'), nullable=False)

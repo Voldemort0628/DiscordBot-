@@ -1,8 +1,8 @@
 import os
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, Store, Keyword, MonitorConfig, Proxy # Added Proxy import
-from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, ProxyForm, ProxyImportForm # Added Proxy forms import
+from models import db, User, Store, Keyword, MonitorConfig, Proxy, ProxyGroup, ProxyList # Added ProxyGroup and ProxyList imports
+from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, ProxyForm, ProxyImportForm, ProxyGroupForm, ProxyListForm # Added ProxyGroupForm and ProxyListForm imports
 from discord_webhook import DiscordWebhook
 import subprocess
 import psutil
@@ -353,6 +353,8 @@ def create_app():
     def manage_proxies():
         form = ProxyForm()
         import_form = ProxyImportForm()
+        group_form = ProxyGroupForm()
+        list_form = ProxyListForm()
 
         if request.method == 'POST' and 'action' in request.form:
             try:
@@ -382,7 +384,8 @@ def create_app():
             return redirect(url_for('manage_proxies'))
 
         proxies = Proxy.query.filter_by(user_id=current_user.id).all()
-        return render_template('proxies.html', form=form, import_form=import_form, proxies=proxies)
+        proxy_groups = ProxyGroup.query.filter_by(user_id=current_user.id).all()
+        return render_template('proxies.html', form=form, import_form=import_form, proxies=proxies, group_form=group_form, list_form=list_form, proxy_groups=proxy_groups)
 
     @app.route('/import_proxies', methods=['POST'])
     @login_required
@@ -446,6 +449,186 @@ def create_app():
                 flash('Error importing proxies. Please check the format and try again.', 'error')
 
         return redirect(url_for('manage_proxies'))
+
+    # Add new proxy management routes after the existing routes
+
+    @app.route('/add_proxy_group', methods=['POST'])
+    @login_required
+    def add_proxy_group():
+        form = ProxyGroupForm()
+        if form.validate_on_submit():
+            try:
+                group = ProxyGroup(
+                    name=form.name.data,
+                    description=form.description.data,
+                    user_id=current_user.id
+                )
+                db.session.add(group)
+                db.session.commit()
+                flash('Proxy group created successfully')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error creating proxy group: {e}")
+                flash('Error creating proxy group', 'error')
+        return redirect(url_for('manage_proxies'))
+
+    @app.route('/proxy_group/<int:group_id>', methods=['DELETE'])
+    @login_required
+    def delete_proxy_group(group_id):
+        group = ProxyGroup.query.get_or_404(group_id)
+        if group.user_id != current_user.id:
+            return 'Access denied', 403
+        try:
+            db.session.delete(group)
+            db.session.commit()
+            return 'Success', 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting proxy group: {e}")
+            return 'Error', 500
+
+    @app.route('/add_proxy_list/<int:group_id>', methods=['POST'])
+    @login_required
+    def add_proxy_list(group_id):
+        group = ProxyGroup.query.get_or_404(group_id)
+        if group.user_id != current_user.id:
+            flash('Access denied', 'error')
+            return redirect(url_for('manage_proxies'))
+
+        form = ProxyListForm()
+        if form.validate_on_submit():
+            try:
+                proxy_list = ProxyList(
+                    name=form.name.data,
+                    description=form.description.data,
+                    enabled=form.enabled.data,
+                    group_id=group_id
+                )
+                db.session.add(proxy_list)
+                db.session.commit()
+                flash('Proxy list created successfully')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error creating proxy list: {e}")
+                flash('Error creating proxy list', 'error')
+        return redirect(url_for('manage_proxies'))
+
+    @app.route('/proxy_list/<int:list_id>', methods=['DELETE'])
+    @login_required
+    def delete_proxy_list(list_id):
+        proxy_list = ProxyList.query.get_or_404(list_id)
+        if proxy_list.group.user_id != current_user.id:
+            return 'Access denied', 403
+        try:
+            db.session.delete(proxy_list)
+            db.session.commit()
+            return 'Success', 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting proxy list: {e}")
+            return 'Error', 500
+
+    @app.route('/proxy_list/<int:list_id>/toggle', methods=['POST'])
+    @login_required
+    def toggle_proxy_list(list_id):
+        proxy_list = ProxyList.query.get_or_404(list_id)
+        if proxy_list.group.user_id != current_user.id:
+            return 'Access denied', 403
+        try:
+            proxy_list.enabled = not proxy_list.enabled
+            db.session.commit()
+            return 'Success', 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error toggling proxy list: {e}")
+            return 'Error', 500
+
+    @app.route('/import_proxies/<int:list_id>', methods=['POST'])
+    @login_required
+    def import_proxies_to_list(list_id): #Renamed to avoid name collision
+        proxy_list = ProxyList.query.get_or_404(list_id)
+        if proxy_list.group.user_id != current_user.id:
+            flash('Access denied', 'error')
+            return redirect(url_for('manage_proxies'))
+
+        import_form = ProxyImportForm()
+        if import_form.validate_on_submit():
+            try:
+                proxy_data = import_form.proxy_list.data.strip().split('\n')
+                protocol = import_form.protocol.data
+                added_count = 0
+                error_count = 0
+
+                for line in proxy_data:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        parts = line.split(':')
+                        if len(parts) not in [2, 4]:
+                            error_count += 1
+                            continue
+
+                        if len(parts) == 2:
+                            ip, port = parts
+                            username = password = None
+                        else:
+                            ip, port, username, password = parts
+
+                        proxy = Proxy(
+                            list_id=list_id,
+                            ip=ip,
+                            port=int(port),
+                            username=username,
+                            password=password,
+                            protocol=protocol,
+                            enabled=True
+                        )
+                        db.session.add(proxy)
+                        added_count += 1
+
+                    except (ValueError, IndexError):
+                        error_count += 1
+
+                db.session.commit()
+                flash(f'Successfully added {added_count} proxies. {error_count} failed.')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error importing proxies: {e}")
+                flash('Error importing proxies. Please check the format and try again.', 'error')
+
+        return redirect(url_for('manage_proxies'))
+
+    @app.route('/proxy/<int:proxy_id>', methods=['DELETE'])
+    @login_required
+    def delete_proxy(proxy_id):
+        proxy = Proxy.query.get_or_404(proxy_id)
+        if proxy.list.group.user_id != current_user.id:
+            return 'Access denied', 403
+        try:
+            db.session.delete(proxy)
+            db.session.commit()
+            return 'Success', 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting proxy: {e}")
+            return 'Error', 500
+
+    @app.route('/proxy/<int:proxy_id>/toggle', methods=['POST'])
+    @login_required
+    def toggle_proxy(proxy_id):
+        proxy = Proxy.query.get_or_404(proxy_id)
+        if proxy.list.group.user_id != current_user.id:
+            return 'Access denied', 403
+        try:
+            proxy.enabled = not proxy.enabled
+            db.session.commit()
+            return 'Success', 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error toggling proxy: {e}")
+            return 'Error', 500
 
     return app
 
