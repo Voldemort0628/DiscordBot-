@@ -35,6 +35,10 @@ class Keyword(db.Model):
     enabled = db.Column(db.Boolean, default=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
+    __table_args__ = (
+        db.UniqueConstraint('word', 'user_id', name='uix_keyword_word_user'),
+    )
+
 class MonitorConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     rate_limit = db.Column(db.Float, default=1.0)

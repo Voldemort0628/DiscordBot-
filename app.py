@@ -94,14 +94,29 @@ def manage_stores():
 def manage_keywords():
     form = KeywordForm()
     if form.validate_on_submit():
-        keyword = Keyword(
-            word=form.word.data,
-            enabled=form.enabled.data,
-            user_id=current_user.id
-        )
-        db.session.add(keyword)
-        db.session.commit()
-        flash('Keyword added successfully')
+        try:
+            # Check if user already has this keyword
+            existing = Keyword.query.filter_by(
+                word=form.word.data,
+                user_id=current_user.id
+            ).first()
+
+            if existing:
+                flash('You already have this keyword added.')
+                return redirect(url_for('manage_keywords'))
+
+            keyword = Keyword(
+                word=form.word.data,
+                enabled=form.enabled.data,
+                user_id=current_user.id
+            )
+            db.session.add(keyword)
+            db.session.commit()
+            flash('Keyword added successfully')
+        except Exception as e:
+            db.session.rollback()
+            flash('Error adding keyword. Please try again.')
+            print(f"Keyword creation error: {e}")
         return redirect(url_for('manage_keywords'))
 
     # Show only user's keywords
@@ -361,12 +376,45 @@ def register():
         return redirect(url_for('dashboard'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = User(username=form.username.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        flash('Registration successful! Please login.')
-        return redirect(url_for('login'))
+        try:
+            # Create the new user
+            user = User(username=form.username.data)
+            user.set_password(form.password.data)
+            db.session.add(user)
+            db.session.commit()  # Commit to get the user.id
+
+            # Add default stores for the new user
+            from stores import SHOPIFY_STORES
+            for store_url in SHOPIFY_STORES:
+                store = Store(url=store_url, enabled=True, user_id=user.id)
+                db.session.add(store)
+
+            # Add default keywords for the new user
+            from stores import DEFAULT_KEYWORDS
+            for word in DEFAULT_KEYWORDS:
+                keyword = Keyword(word=word, enabled=True, user_id=user.id)
+                db.session.add(keyword)
+
+            # Create default configuration
+            config = MonitorConfig(
+                rate_limit=1.0,
+                monitor_delay=30,
+                max_products=250,
+                user_id=user.id
+            )
+            db.session.add(config)
+
+            # Commit all changes
+            db.session.commit()
+            flash('Registration successful! Please login.')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash('Error during registration. Please try again.')
+            print(f"Registration error: {e}")
+            return redirect(url_for('register'))
+
     return render_template('register.html', form=form)
 
 if __name__ == '__main__':
