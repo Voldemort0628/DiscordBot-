@@ -1,8 +1,8 @@
 import os
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, Store, Keyword, MonitorConfig
-from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm
+from models import db, User, Store, Keyword, MonitorConfig, Proxy # Added Proxy import
+from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, ProxyForm, ProxyImportForm # Added Proxy forms import
 from discord_webhook import DiscordWebhook
 import subprocess
 import psutil
@@ -347,6 +347,105 @@ def create_app():
             print(f"Error in toggle_monitor: {e}")
             flash(f'Error toggling monitor: {str(e)}', 'error')
             return redirect(url_for('dashboard'))
+
+    @app.route('/proxies', methods=['GET', 'POST'])
+    @login_required
+    def manage_proxies():
+        form = ProxyForm()
+        import_form = ProxyImportForm()
+
+        if request.method == 'POST' and 'action' in request.form:
+            try:
+                proxy_id = request.form.get('proxy_id')
+                proxy = Proxy.query.get_or_404(proxy_id)
+
+                if proxy.user_id != current_user.id:
+                    flash('Access denied', 'error')
+                    return redirect(url_for('manage_proxies'))
+
+                action = request.form['action']
+                if action == 'toggle':
+                    proxy.enabled = not proxy.enabled
+                    db.session.commit()
+                    flash(f"Proxy {'enabled' if proxy.enabled else 'disabled'}")
+                elif action == 'delete':
+                    db.session.delete(proxy)
+                    db.session.commit()
+                    flash('Proxy deleted')
+                elif action == 'test':
+                    # Implement proxy testing logic here
+                    flash('Proxy test functionality coming soon')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error processing proxy action: {e}")
+                flash('Error processing proxy action', 'error')
+            return redirect(url_for('manage_proxies'))
+
+        proxies = Proxy.query.filter_by(user_id=current_user.id).all()
+        return render_template('proxies.html', form=form, import_form=import_form, proxies=proxies)
+
+    @app.route('/import_proxies', methods=['POST'])
+    @login_required
+    def import_proxies():
+        import_form = ProxyImportForm()
+        if import_form.validate_on_submit():
+            try:
+                proxy_list = import_form.proxy_list.data.strip().split('\n')
+                protocol = import_form.protocol.data
+                added_count = 0
+                error_count = 0
+
+                for line in proxy_list:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        parts = line.split(':')
+                        if len(parts) not in [2, 4]:
+                            error_count += 1
+                            continue
+
+                        if len(parts) == 2:
+                            ip, port = parts
+                            username = password = None
+                        else:
+                            ip, port, username, password = parts
+
+                        # Check for existing proxy
+                        existing = Proxy.query.filter_by(
+                            user_id=current_user.id,
+                            ip=ip,
+                            port=int(port)
+                        ).first()
+
+                        if existing:
+                            error_count += 1
+                            continue
+
+                        proxy = Proxy(
+                            user_id=current_user.id,
+                            ip=ip,
+                            port=int(port),
+                            username=username,
+                            password=password,
+                            protocol=protocol,
+                            enabled=True
+                        )
+                        db.session.add(proxy)
+                        added_count += 1
+
+                    except (ValueError, IndexError):
+                        error_count += 1
+
+                db.session.commit()
+                flash(f'Successfully added {added_count} proxies. {error_count} failed.')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error importing proxies: {e}")
+                flash('Error importing proxies. Please check the format and try again.', 'error')
+
+        return redirect(url_for('manage_proxies'))
 
     return app
 
