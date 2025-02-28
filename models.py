@@ -1,7 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
 
 db = SQLAlchemy()
 
@@ -49,7 +48,6 @@ class MonitorConfig(db.Model):
     rate_limit = db.Column(db.Float, default=1.0)
     monitor_delay = db.Column(db.Integer, default=30)
     max_products = db.Column(db.Integer, default=250)
-    use_proxies = db.Column(db.Boolean, default=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 class RetailScraper(db.Model):

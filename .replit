@@ -1,4 +1,4 @@
-modules = ["python-3.11", "python3"]
+modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
@@ -48,14 +48,6 @@ args = "python run_webhook_test.py your-discord-webhook-url"
 
 [[workflows.workflow]]
 name = "Test Monitor"
-author = 9248373
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python test_monitor.py"
-
-[[workflows.workflow]]
-name = "Check Monitor"
 author = 9248373
 
 [[workflows.workflow.tasks]]

@@ -1,3 +1,0 @@
-=== Monitor Start: 2025-02-27 23:32:35.842012 ===
-Monitor started with PID: 14338
-2025-02-27 23:32:39,529 - scraper - ERROR - Discord webhook URL not configured

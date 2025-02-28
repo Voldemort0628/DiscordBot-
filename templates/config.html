@@ -30,11 +30,6 @@
                         {{ form.discord_webhook_url(class="form-control") }}
                         <div class="form-text">Your Discord webhook URL for notifications</div>
                     </div>
-                    <div class="mb-3 form-check">
-                        {{ form.use_proxies(class="form-check-input") }}
-                        {{ form.use_proxies.label(class="form-check-label") }}
-                        <div class="form-text">Enable to use proxies for monitoring</div>
-                    </div>
                     {{ form.submit(class="btn btn-primary") }}
                 </form>
             </div>

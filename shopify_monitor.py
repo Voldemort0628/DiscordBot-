@@ -1,286 +1,195 @@
-import asyncio
-import aiohttp
-import json
+import requests
 import time
+import json
+from typing import Dict, List
 import random
-from typing import Dict, List, Optional, Set
-from datetime import datetime
-from collections import deque
-import logging
-from urllib.parse import urlparse, urljoin
-from aiohttp import ClientTimeout, TCPConnector, ClientError
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
-from logger_config import scraper_logger
 
-logger = scraper_logger
+class RateLimiter:
+    def __init__(self, rate_limit):
+        self.rate_limit = rate_limit
+        self.last_request_time = 0
 
-class StoreVerifier:
-    """Verify Shopify stores with multiple detection methods"""
-    def __init__(self):
-        self.verified_stores: Set[str] = set()
-        self.failed_stores: Dict[str, Dict] = {}
+    def __enter__(self):
+        current_time = time.time()
+        time_passed = current_time - self.last_request_time
+        if time_passed < 1 / self.rate_limit:
+            time.sleep(1 / self.rate_limit - time_passed)
+        self.last_request_time = time.time()
+        return self
 
-    async def verify_store(self, session: aiohttp.ClientSession, store_url: str) -> bool:
-        """Verify if store is Shopify using multiple methods"""
-        try:
-            if store_url in self.verified_stores:
-                return True
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
-            if store_url in self.failed_stores:
-                if time.time() - self.failed_stores[store_url]['timestamp'] < 3600:
-                    return False
-                del self.failed_stores[store_url]
-
-            # Method 1: Check products.json endpoint
-            products_url = f"{store_url.rstrip('/')}/products.json"
-            try:
-                async with session.get(products_url, ssl=False, timeout=10) as response:
-                    if response.status == 200:
-                        try:
-                            await response.json()
-                            self.verified_stores.add(store_url)
-                            return True
-                        except ValueError:
-                            pass
-            except Exception:
-                pass
-
-            # Method 2: Check for Shopify assets
-            try:
-                async with session.get(store_url, ssl=False, timeout=10) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        shopify_indicators = [
-                            'shopify.com',
-                            '/cdn/shop/',
-                            'Shopify.theme',
-                            'myshopify.com',
-                            'shopifycdn.com'
-                        ]
-                        if any(indicator in html for indicator in shopify_indicators):
-                            self.verified_stores.add(store_url)
-                            return True
-            except Exception:
-                pass
-
-            # Method 3: Try product handle lookup
-            try:
-                test_url = f"{store_url.rstrip('/')}/products/does-not-exist"
-                async with session.get(test_url, ssl=False, timeout=10) as response:
-                    if response.status == 404:
-                        html = await response.text()
-                        if any(x in html.lower() for x in ['shopify', 'product not found']):
-                            self.verified_stores.add(store_url)
-                            return True
-            except Exception:
-                pass
-
-            # Store failed verification
-            self.failed_stores[store_url] = {
-                'timestamp': time.time(),
-                'attempts': self.failed_stores.get(store_url, {}).get('attempts', 0) + 1
-            }
-            return False
-
-        except Exception as e:
-            logger.error(f"Error verifying store {store_url}: {e}")
-            return False
 
 class ShopifyMonitor:
-    """Advanced Shopify monitor with robust store verification"""
-    def __init__(self, rate_limit: float = 1.0, proxies: Optional[List[str]] = None):
-        self.rate_limit = rate_limit
-        self.proxies = proxies or []
-        self.store_verifier = StoreVerifier()
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.last_request: Dict[str, float] = {}
-        self.store_cookies: Dict[str, Dict[str, str]] = {}
-        self.consecutive_errors: Dict[str, int] = {}
-        self.max_retries = 3
+    def __init__(self, rate_limit=0.5):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+        self.rate_limiter = RateLimiter(rate_limit)
+        self.failed_stores = set()
+        self.retry_counts = {}
+        self.last_request_time = time.time()
 
-    async def setup(self):
-        """Initialize monitor resources"""
-        if self.session is None:
-            timeout = ClientTimeout(total=30)
-            connector = TCPConnector(ssl=False, limit=10)
-            self.session = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=connector,
-                headers={'User-Agent': USER_AGENT}
-            )
-
-    async def close(self):
-        """Cleanup resources"""
-        if self.session and not self.session.closed:
-            await self.session.close()
-
-    async def _wait_for_rate_limit(self, domain: str):
-        """Rate limiting with jitter"""
-        current_time = time.time()
-        last_request = self.last_request.get(domain, 0)
-        delay = (1.0 / self.rate_limit) - (current_time - last_request)
-
-        if delay > 0:
-            jitter = random.uniform(0, 0.1)
-            await asyncio.sleep(delay + jitter)
-
-        self.last_request[domain] = time.time()
-
-    async def get_store_products(self, store_url: str) -> Optional[List[Dict]]:
-        """Fetch products with improved error handling"""
-        domain = urlparse(store_url).netloc
-        retry_count = self.consecutive_errors.get(domain, 0)
-
+    def get_product_variants(self, product_url):
+        """Fetch specific product variants from a Shopify product URL"""
         try:
-            # Verify store first
-            if not await self.store_verifier.verify_store(self.session, store_url):
-                self.consecutive_errors[domain] = retry_count + 1
-                return None
+            # Convert product URL to JSON endpoint
+            if not product_url.endswith('.json'):
+                if product_url.endswith('/'):
+                    product_url = product_url[:-1]
+                product_url = product_url + '.json'
 
-            # Rate limiting
-            await self._wait_for_rate_limit(domain)
+            # Fetch product data
+            with self.rate_limiter:
+                response = self.session.get(product_url, timeout=10)
+                response.raise_for_status()
+                product_data = response.json().get('product', {})
 
-            # Make request
-            url = f"{store_url.rstrip('/')}/products.json"
-            headers = {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'Referer': store_url
-            }
+            if not product_data:
+                return {'variants': []}
 
-            async with self.session.get(url, headers=headers, ssl=False) as response:
-                if response.status == 429:
-                    logger.warning(f"Rate limited on {store_url}")
-                    self.consecutive_errors[domain] = retry_count + 1
-                    return None
-
-                if response.status != 200:
-                    logger.error(f"HTTP {response.status} from {store_url}")
-                    self.consecutive_errors[domain] = retry_count + 1
-                    return None
-
-                try:
-                    data = await response.json()
-                    self.consecutive_errors[domain] = 0  # Reset on success
-                    return data.get('products', [])
-                except ValueError as e:
-                    logger.error(f"Invalid JSON from {store_url}: {e}")
-                    self.consecutive_errors[domain] = retry_count + 1
-                    return None
-
-        except Exception as e:
-            logger.error(f"Error fetching {store_url}: {e}")
-            self.consecutive_errors[domain] = retry_count + 1
-            return None
-
-    def _process_product(self, product: Dict) -> Optional[Dict]:
-        """Process product data"""
-        try:
-            variants = product.get('variants', [])
-            if not variants:
-                return None
-
-            # Calculate stock
-            stock = sum(
-                v.get('inventory_quantity', 0)
-                for v in variants
-                if v.get('available')
-            )
-
-            if stock <= 0:
-                return None
+            # Extract variant information
+            variants = []
+            for variant in product_data.get('variants', []):
+                variants.append({
+                    'id': variant.get('id'),
+                    'title': variant.get('title'),
+                    'price': variant.get('price'),
+                    'inventory_quantity': variant.get('inventory_quantity', 0),
+                    'available': variant.get('available', False)
+                })
 
             return {
-                'id': str(product['id']),
-                'title': product['title'],
-                'handle': product.get('handle', ''),
-                'url': f"https://{product.get('shop_url', '')}/products/{product.get('handle', '')}",
-                'price': float(variants[0].get('price', 0)),
-                'available': True,
-                'stock': stock,
-                'variants': [{
-                    'id': str(v['id']),
-                    'title': v.get('title', ''),
-                    'price': float(v.get('price', 0)),
-                    'available': v.get('available', False),
-                    'inventory': v.get('inventory_quantity', 0)
-                } for v in variants if v.get('available')]
+                'product_title': product_data.get('title'),
+                'product_handle': product_data.get('handle'),
+                'variants': variants
             }
 
         except Exception as e:
-            logger.error(f"Error processing product: {e}")
-            return None
+            print(f"Error fetching variants from {product_url}: {e}")
+            return {'variants': []}
 
-    def _matches_keywords(self, product: Dict, keywords: List[str]) -> bool:
-        """Check if product matches keywords"""
-        if not keywords:
-            return True
+    def _rate_limit(self):
+        """Implements rate limiting for Shopify requests with jitter"""
+        current_time = time.time()
+        time_passed = current_time - self.last_request_time
+        rate_limit = self.rate_limiter.rate_limit
+        if time_passed < 1/rate_limit:
+            # Add random jitter between 0-0.5 seconds
+            jitter = random.uniform(0, 0.5)
+            time.sleep(1/rate_limit - time_passed + jitter)
+        self.last_request_time = time.time()
 
-        text = ' '.join(filter(None, [
-            product.get('title', ''),
-            product.get('handle', ''),
-            product.get('type', ''),
-            product.get('vendor', '')
-        ])).lower()
+    def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
+        """
+        Fetches products from a Shopify store matching given keywords
+        Implements exponential backoff for failed stores
+        """
+        if store_url in self.failed_stores:
+            retry_count = self.retry_counts.get(store_url, 0)
+            backoff = min(300, 2 ** retry_count)  # Max 5 minutes backoff
+            if time.time() - self.last_request_time < backoff:
+                return []
+            self.retry_counts[store_url] = retry_count + 1
 
-        return any(k.lower() in text for k in keywords)
+        self._rate_limit()
 
-    async def monitor_store(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """Monitor single store"""
-        domain = urlparse(store_url).netloc
-        if self.consecutive_errors.get(domain, 0) >= self.max_retries:
-            logger.warning(f"Skipping {store_url} due to too many consecutive errors")
+        try:
+            # Use a smaller initial limit for faster responses
+            initial_limit = 50
+            products_url = f"{store_url}/products.json?limit={initial_limit}"
+
+            # Use shorter timeout for faster error detection
+            response = self.session.get(
+                products_url, 
+                timeout=5, 
+                headers={
+                    "Accept-Encoding": "gzip, deflate",
+                    "Cache-Control": "no-cache"
+                }
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            matching_products = []
+
+            # Optimize keyword matching with pre-computed lowercase
+            lowercase_keywords = [kw.lower() for kw in keywords]
+
+            for product in data.get("products", []):
+                product_title_lower = product["title"].lower()
+                if any(keyword in product_title_lower for keyword in lowercase_keywords):
+                    processed_product = self._process_product(store_url, product)
+                    if processed_product:
+                        matching_products.append(processed_product)
+
+            # If we got max products and didn't find any matches,
+            # fetch more products only if necessary
+            product_count = len(data.get("products", []))
+            if product_count >= initial_limit and not matching_products and MAX_PRODUCTS > initial_limit:
+                # Get more products in a second request
+                products_url = f"{store_url}/products.json?limit={MAX_PRODUCTS}&page=2"
+
+                try:
+                    response = self.session.get(products_url, timeout=8)
+                    response.raise_for_status()
+                    more_data = response.json()
+
+                    for product in more_data.get("products", []):
+                        product_title_lower = product["title"].lower()
+                        if any(keyword in product_title_lower for keyword in lowercase_keywords):
+                            processed_product = self._process_product(store_url, product)
+                            if processed_product:
+                                matching_products.append(processed_product)
+                except Exception as e:
+                    # If second request fails, still return what we found from first request
+                    print(f"Error fetching additional products from {store_url}: {e}")
+
+            # Reset failed status and retry count if successful
+            self.failed_stores.discard(store_url)
+            self.retry_counts.pop(store_url, None)
+            return matching_products
+
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            print(f"Error fetching products from {store_url}: {e}")
+            if isinstance(e, (requests.exceptions.ConnectionError, 
+                            requests.exceptions.Timeout,
+                            requests.exceptions.SSLError)):
+                self.failed_stores.add(store_url)
             return []
 
-        products = await self.get_store_products(store_url)
-        if not products:
-            return []
+    def _process_product(self, store_url: str, product: Dict) -> Dict:
+        """
+        Processes raw product data into formatted structure
+        Returns empty dict if processing fails
+        """
+        try:
+            variants = product.get("variants", [])
+            sizes = {}
+            variant_ids = {}
+            stock = 0
 
-        matching = []
-        for product in products:
-            if self._matches_keywords(product, keywords):
-                processed = self._process_product(product)
-                if processed:
-                    matching.append(processed)
+            for variant in variants:
+                if variant.get("available"):
+                    size = str(variant.get("title"))
+                    inventory = variant.get("inventory_quantity", 1)
+                    stock += inventory
+                    sizes[size] = inventory
+                    variant_ids[size] = str(variant.get("id", ""))
 
-        return matching
-
-    async def monitor_stores(self, stores: List[str], keywords: List[str]) -> List[Dict]:
-        """Monitor multiple stores"""
-        await self.setup()
-
-        tasks = []
-        for store in stores:
-            task = asyncio.create_task(self.monitor_store(store, keywords))
-            tasks.append(task)
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        products = []
-        for store, result in zip(stores, results):
-            if isinstance(result, Exception):
-                logger.error(f"Failed to monitor {store}: {result}")
-            elif isinstance(result, list):
-                products.extend(result)
-
-        return products
-
-async def main():
-    """Example usage"""
-    monitor = ShopifyMonitor(rate_limit=1.0)
-    try:
-        stores = [
-            "https://shop.shopwss.com",
-            "https://www.shoepalace.com",
-            "https://www.jimmyjazz.com"
-        ]
-        keywords = ["nike", "jordan", "dunk"]
-
-        products = await monitor.monitor_stores(stores, keywords)
-        print(f"Found {len(products)} matching products")
-
-    finally:
-        await monitor.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            return {
+                "title": product["title"],
+                "url": f"{store_url}/products/{product['handle']}",
+                "price": variants[0].get("price") if variants else "N/A",
+                "image_url": product.get("images", [{}])[0].get("src", ""),
+                "stock": stock,
+                "sizes": sizes,
+                "variants": variant_ids,
+                "full_size_run": "Bot 1 FSR" if stock > 0 else "OOS"
+            }
+        except Exception as e:
+            print(f"Error processing product {product.get('title', 'Unknown')}: {e}")
+            return {}  # Return empty dict instead of None to match return type

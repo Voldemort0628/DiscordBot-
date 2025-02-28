@@ -1,47 +1,36 @@
 import os
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from models import db, User, Store, Keyword, MonitorConfig, Proxy
-from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm, ProxyImportForm
+from models import db, User, Store, Keyword, MonitorConfig
+from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm
 from discord_webhook import DiscordWebhook
 import subprocess
 import psutil
 import time
 
 def is_monitor_running(user_id):
-    """Check if a specific user's monitor is running and responsive"""
+    """Check if a specific user's monitor is running"""
     try:
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                cmdline = ' '.join(proc.info['cmdline'] or [])
-                if ('python' in proc.info['name'] and 
-                    'main.py' in cmdline and 
-                    f"MONITOR_USER_ID={user_id}" in cmdline):
-                    # Verify process is actually running (not zombie)
-                    process = psutil.Process(proc.info['pid'])
-                    if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
-                        # Check if process was started recently (within last 10 minutes)
-                        if time.time() - process.create_time() < 600:
-                            return True
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except Exception as e:
-        print(f"Error checking monitor status: {e}")
+            cmdline = ' '.join(proc.info['cmdline'] or [])
+            if ('python' in proc.info['name'] and 
+                'main.py' in cmdline and 
+                f"MONITOR_USER_ID={user_id}" in cmdline):
+                return True
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
     return False
 
 def create_app():
     app = Flask(__name__)
 
-    # Enhanced Configuration
+    # Basic Configuration
     app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,
         'pool_recycle': 300,
-        'pool_size': 20,
-        'max_overflow': 5,
-        'pool_timeout': 30
     }
 
     # Initialize Flask extensions
@@ -271,8 +260,7 @@ def create_app():
         if form.validate_on_submit():
             try:
                 from shopify_monitor import ShopifyMonitor
-                # Use same rate limiting settings as the monitor
-                monitor = ShopifyMonitor(rate_limit=0.5)
+                monitor = ShopifyMonitor()
                 product_url = form.product_url.data
 
                 # Input validation
@@ -288,9 +276,6 @@ def create_app():
                 from urllib.parse import urlparse
                 parsed_url = urlparse(product_url)
                 cart_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                
-                # Log the attempt for debugging
-                app.logger.info(f"Scraping variants for {product_url}")
 
                 # Get variants
                 variants_data = monitor.get_product_variants(product_url)
@@ -339,20 +324,13 @@ def create_app():
                 # Start a new monitor process for this user
                 env = os.environ.copy()
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
-                env['PYTHONUNBUFFERED'] = '1'  # Ensure output is not buffered
-                
-                # Use the start_monitor.py script which has better process management
-                try:
-                    subprocess.Popen(
-                        ['python', 'start_monitor.py', str(current_user.id)],
-                        env=env,
-                        start_new_session=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT
-                    )
-                    flash('Monitor started successfully')
-                except Exception as e:
-                    flash(f'Error starting monitor: {str(e)}', 'error')
+
+                # Use start_new_session to ensure the monitor runs independently
+                subprocess.Popen(
+                    ['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"],
+                    env=env,
+                    start_new_session=True
+                )
 
                 time.sleep(1)  # Brief pause to allow process to start
                 if is_monitor_running(current_user.id):
@@ -365,103 +343,6 @@ def create_app():
             print(f"Error in toggle_monitor: {e}")
             flash(f'Error toggling monitor: {str(e)}', 'error')
             return redirect(url_for('dashboard'))
-
-    @app.route('/proxies', methods=['GET', 'POST'])
-    @login_required
-    def manage_proxies():
-        import_form = ProxyImportForm()
-        proxies = Proxy.query.filter_by(user_id=current_user.id).all()
-
-        if request.method == 'POST':
-            if 'action' in request.form:
-                proxy_id = request.form.get('proxy_id')
-                proxy = Proxy.query.get_or_404(proxy_id)
-
-                if proxy.user_id != current_user.id:
-                    flash('Access denied', 'error')
-                    return redirect(url_for('manage_proxies'))
-
-                action = request.form['action']
-                if action == 'delete':
-                    db.session.delete(proxy)
-                    db.session.commit()
-                    flash('Proxy deleted')
-                return redirect(url_for('manage_proxies'))
-
-        return render_template('proxies.html', import_form=import_form, proxies=proxies)
-
-    @app.route('/import_proxies', methods=['POST'])
-    @login_required
-    def import_proxies():
-        import_form = ProxyImportForm()
-        if import_form.validate_on_submit():
-            try:
-                # Split the input by newlines and filter out empty lines
-                proxy_data = [line.strip() for line in import_form.proxy_list.data.split('\n') if line.strip()]
-                protocol = import_form.protocol.data
-                added_count = 0
-                error_count = 0
-                existing_count = 0
-
-                for line in proxy_data:
-                    try:
-                        parts = line.split(':')
-                        if len(parts) not in [2, 4]:
-                            error_count += 1
-                            continue
-
-                        ip = parts[0]
-                        port = int(parts[1])
-                        username = parts[2] if len(parts) > 2 else None
-                        password = parts[3] if len(parts) > 3 else None
-
-                        # Check for existing proxy
-                        existing = Proxy.query.filter_by(
-                            user_id=current_user.id,
-                            ip=ip,
-                            port=port
-                        ).first()
-
-                        if existing:
-                            existing_count += 1
-                            continue
-
-                        proxy = Proxy(
-                            user_id=current_user.id,
-                            ip=ip,
-                            port=port,
-                            username=username,
-                            password=password,
-                            protocol=protocol,
-                            enabled=True
-                        )
-                        db.session.add(proxy)
-                        added_count += 1
-
-                        # Commit in batches to prevent memory issues
-                        if added_count % 50 == 0:
-                            db.session.commit()
-
-                    except (ValueError, IndexError) as e:
-                        print(f"Error processing proxy line '{line}': {e}")
-                        error_count += 1
-
-                # Final commit for remaining proxies
-                db.session.commit()
-
-                status_msg = f'Successfully added {added_count} proxies.'
-                if error_count > 0:
-                    status_msg += f' {error_count} failed.'
-                if existing_count > 0:
-                    status_msg += f' {existing_count} were duplicates.'
-                flash(status_msg)
-
-            except Exception as e:
-                db.session.rollback()
-                print(f"Error importing proxies: {e}")
-                flash('Error importing proxies. Please check the format and try again.', 'error')
-
-        return redirect(url_for('manage_proxies'))
 
     return app
 

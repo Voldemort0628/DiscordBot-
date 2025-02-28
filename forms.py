@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField, SelectField, TextAreaField
+from wtforms import StringField, PasswordField, BooleanField, FloatField, IntegerField, SubmitField, SelectField
 from wtforms.validators import DataRequired, URL, Optional, IPAddress, NumberRange, EqualTo, Length, ValidationError
 from models import User
 
@@ -35,7 +35,6 @@ class ConfigForm(FlaskForm):
     monitor_delay = IntegerField('Monitor Delay (seconds)', validators=[DataRequired()])
     max_products = IntegerField('Max Products per Store', validators=[DataRequired()])
     discord_webhook_url = StringField('Discord Webhook URL', validators=[Optional(), URL()])
-    use_proxies = BooleanField('Use Proxies', default=False)
     submit = SubmitField('Save Configuration')
 
 class VariantScraperForm(FlaskForm):
@@ -53,10 +52,23 @@ class RetailScraperForm(FlaskForm):
     enabled = BooleanField('Enabled', default=True)
     submit = SubmitField('Add Scraper')
 
+class ProxyForm(FlaskForm):
+    ip = StringField('IP Address', validators=[DataRequired(), IPAddress()])
+    port = IntegerField('Port', validators=[DataRequired(), NumberRange(min=1, max=65535)])
+    username = StringField('Username (Optional)', validators=[Optional()])
+    password = PasswordField('Password (Optional)', validators=[Optional()])
+    protocol = SelectField('Protocol', choices=[
+        ('http', 'HTTP'),
+        ('https', 'HTTPS'),
+        ('socks5', 'SOCKS5')
+    ], validators=[DataRequired()])
+    country = StringField('Country Code (Optional)', validators=[Optional()])
+    enabled = BooleanField('Enabled', default=True)
+    submit = SubmitField('Add Proxy')
+
 class ProxyImportForm(FlaskForm):
-    proxy_list = TextAreaField('Proxy List (One proxy per line)',
-                           validators=[DataRequired()],
-                           description='Format: ip:port:username:password or ip:port. Example: 167.253.103.2:43929:b6zIPTgA:q1qqilpp')
+    proxy_list = StringField('Proxy List (One per line, format: ip:port:user:pass or ip:port)', 
+                           validators=[DataRequired()])
     protocol = SelectField('Protocol', choices=[
         ('http', 'HTTP'),
         ('https', 'HTTPS'),
