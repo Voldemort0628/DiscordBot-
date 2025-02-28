@@ -5,6 +5,10 @@ from typing import Dict, List
 import random
 from config import USER_AGENT, SHOPIFY_RATE_LIMIT, MAX_PRODUCTS
 import logging
+import socket
+import dns.resolver
+import trafilatura
+from urllib.parse import urlparse
 
 class RateLimiter:
     def __init__(self, rate_limit):
@@ -15,7 +19,6 @@ class RateLimiter:
         current_time = time.time()
         time_passed = current_time - self.last_request_time
         if time_passed < 1 / self.rate_limit:
-            # Add random jitter between 0-0.5 seconds
             jitter = random.uniform(0, 0.5)
             time.sleep(1/self.rate_limit - time_passed + jitter)
         self.last_request_time = time.time()
@@ -36,17 +39,225 @@ class ShopifyMonitor:
         self.failed_stores = set()
         self.retry_counts = {}
         self.last_request_time = time.time()
+        self.dns_cache = {}
+        self.resolvers = [
+            dns.resolver.Resolver(),
+            dns.resolver.Resolver(configure=False)
+        ]
+        self.resolvers[1].nameservers = ['8.8.8.8', '8.8.4.4']
+
+    def _resolve_domain(self, domain: str) -> str:
+        if domain in self.dns_cache:
+            if time.time() - self.dns_cache[domain]['timestamp'] < 3600:
+                return self.dns_cache[domain]['ip']
+
+        for resolver in self.resolvers:
+            try:
+                answers = resolver.resolve(domain, 'A')
+                if answers:
+                    ip = answers[0].address
+                    self.dns_cache[domain] = {
+                        'ip': ip,
+                        'timestamp': time.time()
+                    }
+                    logging.info(f"Successfully resolved {domain} to {ip}")
+                    return ip
+            except Exception as e:
+                logging.warning(f"DNS resolution failed for {domain} using resolver {resolver}: {e}")
+                continue
+
+        return None
+
+    def _validate_store_url(self, store_url: str) -> bool:
+        try:
+            parsed_url = urlparse(store_url)
+            domain = parsed_url.netloc
+            ip = self._resolve_domain(domain)
+            if not ip:
+                logging.error(f"Failed to resolve domain {domain}")
+                return False
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((ip, 443))
+            sock.close()
+
+            if result != 0:
+                logging.error(f"Failed to connect to {domain} ({ip}:443)")
+                return False
+
+            return True
+        except Exception as e:
+            logging.error(f"Store validation error for {store_url}: {e}")
+            return False
+
+    def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
+        logging.info(f"Fetching products from {store_url} with keywords: {keywords}")
+
+        if not self._validate_store_url(store_url):
+            logging.error(f"Store validation failed for {store_url}")
+            return []
+
+        if store_url in self.failed_stores:
+            retry_count = self.retry_counts.get(store_url, 0)
+            backoff = min(300, 2 ** retry_count)
+            if time.time() - self.last_request_time < backoff:
+                logging.info(f"Skipping {store_url} due to recent failure (backoff: {backoff}s)")
+                return []
+            self.retry_counts[store_url] = retry_count + 1
+
+        try:
+            initial_limit = 150
+            products_url = f"{store_url}/products.json?limit={initial_limit}"
+
+            logging.info(f"Making initial request to {products_url}")
+
+            max_retries = 3
+            products_data = None
+
+            for attempt in range(max_retries):
+                try:
+                    with self.rate_limiter:
+                        response = self.session.get(
+                            products_url,
+                            timeout=5,
+                            headers={
+                                "Accept-Encoding": "gzip, deflate",
+                                "Cache-Control": "no-cache"
+                            }
+                        )
+                        response.raise_for_status()
+                        products_data = response.json()
+                        break
+                except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+                    if attempt == max_retries - 1:
+                        logging.warning(f"API fetch failed, attempting fallback for {store_url}")
+                        try:
+                            downloaded = trafilatura.fetch_url(store_url)
+                            if downloaded:
+                                extracted = trafilatura.extract(downloaded, include_comments=False, 
+                                                             include_tables=False, no_fallback=False)
+                                if extracted:
+                                    products_data = self._process_fallback_content(extracted, keywords)
+                        except Exception as fallback_error:
+                            logging.error(f"Fallback method failed for {store_url}: {fallback_error}")
+                    else:
+                        time.sleep(1 * (attempt + 1))
+
+            if not products_data:
+                logging.error(f"Failed to fetch products from {store_url} after all attempts")
+                return []
+
+            matching_products = []
+            total_products = len(products_data.get("products", []))
+            logging.info(f"Retrieved {total_products} products from initial request")
+
+            lowercase_keywords = [kw.lower() for kw in keywords]
+            for product in products_data.get("products", []):
+                if self._matches_keywords(product, lowercase_keywords):
+                    processed_product = self._process_product(store_url, product)
+                    if processed_product:
+                        matching_products.append(processed_product)
+                        logging.info(f"Found matching product: {product['title']}")
+
+            self.failed_stores.discard(store_url)
+            self.retry_counts.pop(store_url, None)
+
+            logging.info(f"Found total of {len(matching_products)} matching products")
+            return matching_products
+
+        except Exception as e:
+            logging.error(f"Error fetching products from {store_url}: {e}")
+            if isinstance(e, (requests.exceptions.ConnectionError, 
+                            requests.exceptions.Timeout,
+                            requests.exceptions.SSLError)):
+                self.failed_stores.add(store_url)
+                logging.warning(f"Added {store_url} to failed stores list")
+            return []
+
+    def _matches_keywords(self, product: Dict, lowercase_keywords: List[str]) -> bool:
+        if not product:
+            return False
+
+        searchable_fields = [
+            product.get("title", "").lower(),
+            product.get("vendor", "").lower(),
+            product.get("product_type", "").lower(),
+        ]
+        searchable_fields.extend([tag.lower() for tag in product.get("tags", [])])
+
+        return any(
+            any(keyword in field for keyword in lowercase_keywords)
+            for field in searchable_fields
+            if field
+        )
+
+    def _process_fallback_content(self, content: str, keywords: List[str]) -> Dict:
+        products = {"products": []}
+        try:
+            import re
+            product_blocks = re.split(r'\n{2,}', content)
+
+            for block in product_blocks:
+                if any(keyword.lower() in block.lower() for keyword in keywords):
+                    title_match = re.search(r'([\w\s-]+)', block)
+                    price_match = re.search(r'\$(\d+\.?\d*)', block)
+
+                    if title_match:
+                        product = {
+                            "title": title_match.group(1).strip(),
+                            "price": price_match.group(1) if price_match else "N/A",
+                            "available": True,
+                            "variants": [{"title": "Default", "price": price_match.group(1) if price_match else "N/A"}]
+                        }
+                        products["products"].append(product)
+
+        except Exception as e:
+            logging.error(f"Error processing fallback content: {e}")
+
+        return products
+
+    def _process_product(self, store_url: str, product: Dict) -> Dict:
+        try:
+            variants = product.get("variants", [])
+            sizes = {}
+            variant_ids = {}
+            stock = 0
+
+            for variant in variants:
+                if variant.get("available"):
+                    size = str(variant.get("title"))
+                    inventory = variant.get("inventory_quantity", 1)
+                    stock += inventory
+                    sizes[size] = inventory
+                    variant_ids[size] = str(variant.get("id", ""))
+
+            return {
+                "title": product["title"],
+                "url": f"{store_url}/products/{product['handle']}",
+                "price": variants[0].get("price") if variants else "N/A",
+                "image_url": product.get("images", [{}])[0].get("src", ""),
+                "stock": stock,
+                "sizes": sizes,
+                "variants": variant_ids,
+                "full_size_run": "Bot 1 FSR" if stock > 0 else "OOS",
+                "variant_id": variants[0].get("id") if variants else None,
+                "vendor": product.get("vendor"),
+                "type": product.get("product_type"),
+                "tags": product.get("tags", []),
+                "retailer": store_url.split('/')[2]
+            }
+        except Exception as e:
+            logging.error(f"Error processing product {product.get('title', 'Unknown')}: {e}")
+            return {}
 
     def get_product_variants(self, product_url):
-        """Fetch specific product variants from a Shopify product URL"""
         try:
-            # Convert product URL to JSON endpoint
             if not product_url.endswith('.json'):
                 if product_url.endswith('/'):
                     product_url = product_url[:-1]
                 product_url = product_url + '.json'
 
-            # Fetch product data with retry logic
             max_retries = 3
             retry_count = 0
             while retry_count < max_retries:
@@ -66,7 +277,6 @@ class ShopifyMonitor:
             if not product_data:
                 return {'variants': []}
 
-            # Extract variant information with more details
             variants = []
             for variant in product_data.get('variants', []):
                 variants.append({
@@ -93,133 +303,3 @@ class ShopifyMonitor:
         except Exception as e:
             logging.error(f"Error fetching variants from {product_url}: {e}")
             return {'variants': []}
-
-    def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
-        """
-        Fetches products from a Shopify store matching given keywords
-        Implements exponential backoff for failed stores
-        """
-        logging.info(f"Fetching products from {store_url} with keywords: {keywords}")
-
-        if store_url in self.failed_stores:
-            retry_count = self.retry_counts.get(store_url, 0)
-            backoff = min(300, 2 ** retry_count)  # Max 5 minutes backoff
-            if time.time() - self.last_request_time < backoff:
-                logging.info(f"Skipping {store_url} due to recent failure (backoff: {backoff}s)")
-                return []
-            self.retry_counts[store_url] = retry_count + 1
-
-        self._rate_limit()
-
-        try:
-            # Use a smaller initial limit for faster responses
-            initial_limit = 150  # Increased from 50
-            products_url = f"{store_url}/products.json?limit={initial_limit}"
-
-            logging.info(f"Making initial request to {products_url}")
-
-            # Use shorter timeout for faster error detection
-            response = self.session.get(
-                products_url, 
-                timeout=5,
-                headers={
-                    "Accept-Encoding": "gzip, deflate",
-                    "Cache-Control": "no-cache"
-                }
-            )
-            response.raise_for_status()
-            logging.info(f"Initial request successful - Status: {response.status_code}")
-
-            data = response.json()
-            matching_products = []
-            total_products = len(data.get("products", []))
-            logging.info(f"Retrieved {total_products} products from initial request")
-
-            # Optimize keyword matching with pre-computed lowercase
-            lowercase_keywords = [kw.lower() for kw in keywords]
-
-            for product in data.get("products", []):
-                product_title_lower = product["title"].lower()
-                # More flexible matching - match any part of the title
-                if any(keyword in product_title_lower for keyword in lowercase_keywords):
-                    processed_product = self._process_product(store_url, product)
-                    if processed_product:
-                        matching_products.append(processed_product)
-                        logging.info(f"Found matching product: {product['title']}")
-
-            # If we got max products and didn't find any matches,
-            # fetch more products only if necessary
-            if total_products >= initial_limit and not matching_products and MAX_PRODUCTS > initial_limit:
-                logging.info(f"Fetching additional products from page 2 (limit: {MAX_PRODUCTS})")
-                products_url = f"{store_url}/products.json?limit={MAX_PRODUCTS}&page=2"
-
-                try:
-                    response = self.session.get(products_url, timeout=8)
-                    response.raise_for_status()
-                    more_data = response.json()
-                    additional_products = len(more_data.get("products", []))
-                    logging.info(f"Retrieved {additional_products} additional products")
-
-                    for product in more_data.get("products", []):
-                        product_title_lower = product["title"].lower()
-                        if any(keyword in product_title_lower for keyword in lowercase_keywords):
-                            processed_product = self._process_product(store_url, product)
-                            if processed_product:
-                                matching_products.append(processed_product)
-                                logging.info(f"Found matching product from page 2: {product['title']}")
-                except Exception as e:
-                    # If second request fails, still return what we found from first request
-                    logging.error(f"Error fetching additional products from {store_url}: {e}")
-
-            # Reset failed status and retry count if successful
-            self.failed_stores.discard(store_url)
-            self.retry_counts.pop(store_url, None)
-            logging.info(f"Found total of {len(matching_products)} matching products")
-            return matching_products
-
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            logging.error(f"Error fetching products from {store_url}: {e}")
-            if isinstance(e, (requests.exceptions.ConnectionError, 
-                            requests.exceptions.Timeout,
-                            requests.exceptions.SSLError)):
-                self.failed_stores.add(store_url)
-                logging.warning(f"Added {store_url} to failed stores list")
-            return []
-
-    def _process_product(self, store_url: str, product: Dict) -> Dict:
-        """
-        Processes raw product data into formatted structure
-        Returns empty dict if processing fails
-        """
-        try:
-            variants = product.get("variants", [])
-            sizes = {}
-            variant_ids = {}
-            stock = 0
-
-            for variant in variants:
-                if variant.get("available"):
-                    size = str(variant.get("title"))
-                    inventory = variant.get("inventory_quantity", 1)
-                    stock += inventory
-                    sizes[size] = inventory
-                    variant_ids[size] = str(variant.get("id", ""))
-
-            return {
-                "title": product["title"],
-                "url": f"{store_url}/products/{product['handle']}",
-                "price": variants[0].get("price") if variants else "N/A",
-                "image_url": product.get("images", [{}])[0].get("src", ""),
-                "stock": stock,
-                "sizes": sizes,
-                "variants": variant_ids,
-                "full_size_run": "Bot 1 FSR" if stock > 0 else "OOS",
-                "variant_id": variants[0].get("id") if variants else None,  # Added for better restock tracking
-                "vendor": product.get("vendor"),
-                "type": product.get("product_type"),
-                "tags": product.get("tags", []),
-                "retailer": store_url.split('/')[2]  # Extract domain as retailer
-            }
-        except Exception as e:
-            logging.error(f"Error processing product {product.get('title', 'Unknown')}: {e}")
-            return {}  # Return empty dict instead of None to match return type

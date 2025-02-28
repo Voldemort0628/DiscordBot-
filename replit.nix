@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.cacert
     pkgs.geckodriver
     pkgs.chromium
     pkgs.playwright-driver

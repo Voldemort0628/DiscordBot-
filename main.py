@@ -9,23 +9,50 @@ from shopify_monitor import ShopifyMonitor
 from discord_webhook import RateLimitedDiscordWebhook
 from models import db, User, Store, Keyword, MonitorConfig
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
+import os
+from pathlib import Path
 
 # Configure logging with rotation
+log_dir = Path('logs')
+log_dir.mkdir(exist_ok=True)
+
 log_filename = f'monitor_{datetime.now().strftime("%Y%m%d")}.log'
+log_path = log_dir / log_filename
+heartbeat_path = log_dir / 'heartbeat.log'
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(log_filename)
+        logging.FileHandler(log_path)
     ]
 )
 
 # Add a separate logger for heartbeat
 heartbeat_logger = logging.getLogger('heartbeat')
-heartbeat_handler = logging.FileHandler('heartbeat.log')
+heartbeat_handler = logging.FileHandler(heartbeat_path)
+heartbeat_formatter = logging.Formatter('%(asctime)s - %(message)s')
+heartbeat_handler.setFormatter(heartbeat_formatter)
 heartbeat_logger.addHandler(heartbeat_handler)
 heartbeat_logger.setLevel(logging.INFO)
+
+# Add a logger for DNS resolution
+dns_logger = logging.getLogger('dns')
+dns_handler = logging.FileHandler(log_dir / 'dns.log')
+dns_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+dns_handler.setFormatter(dns_formatter)
+dns_logger.addHandler(dns_handler)
+dns_logger.setLevel(logging.DEBUG)
+
+# Add a logger for product fetching
+product_logger = logging.getLogger('product')
+product_handler = logging.FileHandler(log_dir / 'product.log')
+product_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+product_handler.setFormatter(product_formatter)
+product_logger.addHandler(product_handler)
+product_logger.setLevel(logging.DEBUG)
+
 
 class TTLCache:
     def __init__(self, max_size=10000, ttl_hours=12):  # Reduced TTL from 24 to 12 hours
@@ -57,7 +84,7 @@ class TTLCache:
 
     def _cleanup(self):
         current_time = time.time()
-        expired_keys = [k for k, t in self.timestamps.items() 
+        expired_keys = [k for k, t in self.timestamps.items()
                        if current_time - t > self.ttl_seconds]
         for k in expired_keys:
             del self.cache[k]
@@ -66,7 +93,7 @@ class TTLCache:
         if len(self.cache) >= self.max_size:
             # Keep the most recent 75% of entries instead of 50%
             sorted_items = sorted(self.timestamps.items(), key=lambda x: x[1])
-            to_remove = sorted_items[:len(sorted_items)//4]
+            to_remove = sorted_items[:len(sorted_items) // 4]
             for k, _ in to_remove:
                 del self.cache[k]
                 del self.timestamps[k]
@@ -83,7 +110,7 @@ async def send_heartbeat(user_id: int):
             logging.error(f"Error in heartbeat: {e}")
             await asyncio.sleep(60)  # Shorter retry on error
 
-async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
+async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor,
                        webhook: RateLimitedDiscordWebhook, seen_products: TTLCache, user_id: int):
     """Monitors a single store for products with enhanced error handling and detection"""
     retry_count = 0
@@ -245,7 +272,7 @@ async def main():
                                     logging.info(f"Processing {len(retailer_stores)} stores for retailer: {retailer}")
 
                                     for i in range(0, len(retailer_stores), batch_size):
-                                        batch = retailer_stores[i:i+batch_size]
+                                        batch = retailer_stores[i:i + batch_size]
                                         tasks = [
                                             monitor_store(
                                                 store.url,
