@@ -1,0 +1,6 @@
+2025-02-28 02:44:16,182 - scraper - INFO - Monitoring 21 stores with 9 keywords
+2025-02-28 02:44:16,183 - scraper - WARNING - Skipping https://shop.shopwss.com due to too many consecutive errors
+2025-02-28 02:44:16,183 - scraper - WARNING - Skipping https://www.jimmyjazz.com due to too many consecutive errors
+2025-02-28 02:44:16,186 - scraper - WARNING - Skipping https://www.unknwn.com due to too many consecutive errors
+2025-02-28 02:44:16,186 - scraper - WARNING - Skipping https://www.atmosusa.com due to too many consecutive errors
+2025-02-28 02:44:16,186 - scraper - WARNING - Skipping https://www.bodega.com due to too many consecutive errors

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "aiohttp>=3.11.13",
     "beautifulsoup4>=4.13.3",
     "cloudscraper>=1.2.71",
     "flask>=3.1.0",
@@ -20,6 +21,7 @@ dependencies = [
     "requests>=2.32.3",
     "selenium>=4.29.0",
     "selenium-stealth>=1.0.6",
+    "sqlalchemy>=2.0.38",
     "trafilatura>=2.0.0",
     "twilio>=9.4.6",
     "undetected-chromedriver>=3.5.5",

@@ -15,6 +15,10 @@ author = "agent"
 task = "workflow.run"
 args = "Web Dashboard"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Continuous Monitor"
+
 [[workflows.workflow]]
 name = "Web Dashboard"
 author = "agent"
@@ -53,6 +57,20 @@ author = 9248373
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python test_monitor.py"
+
+[[workflows.workflow]]
+name = "Continuous Monitor"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main.py MONITOR_USER_ID=10"
 
 [deployment]
 run = ["sh", "-c", "gunicorn --workers 3 --worker-class gthread --threads 3 --timeout 120 --preload --max-requests 1000 --max-requests-jitter 50 --bind 0.0.0.0:5000 wsgi:app"]
