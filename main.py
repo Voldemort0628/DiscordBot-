@@ -6,7 +6,7 @@ import time
 import logging
 from datetime import datetime, timedelta
 from shopify_monitor import ShopifyMonitor
-from discord_webhook import DiscordWebhook, RateLimitedDiscordWebhook
+from discord_webhook import RateLimitedDiscordWebhook
 from models import db, User, Store, Keyword, MonitorConfig
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
@@ -28,7 +28,7 @@ heartbeat_logger.addHandler(heartbeat_handler)
 heartbeat_logger.setLevel(logging.INFO)
 
 class TTLCache:
-    def __init__(self, max_size=10000, ttl_hours=24):
+    def __init__(self, max_size=10000, ttl_hours=12):  # Reduced TTL from 24 to 12 hours
         self.cache = {}
         self.timestamps = {}
         self.max_size = max_size
@@ -37,7 +37,7 @@ class TTLCache:
 
     def add(self, key: str):
         current_time = time.time()
-        if current_time - self.last_cleanup > 3600:  # Cleanup every hour
+        if current_time - self.last_cleanup > 1800:  # Cleanup every 30 minutes instead of hourly
             self._cleanup()
             self.last_cleanup = current_time
 
@@ -64,8 +64,9 @@ class TTLCache:
             del self.timestamps[k]
 
         if len(self.cache) >= self.max_size:
+            # Keep the most recent 75% of entries instead of 50%
             sorted_items = sorted(self.timestamps.items(), key=lambda x: x[1])
-            to_remove = sorted_items[:len(sorted_items)//2]
+            to_remove = sorted_items[:len(sorted_items)//4]
             for k, _ in to_remove:
                 del self.cache[k]
                 del self.timestamps[k]
@@ -84,7 +85,7 @@ async def send_heartbeat(user_id: int):
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor, 
                        webhook: RateLimitedDiscordWebhook, seen_products: TTLCache, user_id: int):
-    """Monitors a single store for products with enhanced error handling"""
+    """Monitors a single store for products with enhanced error handling and detection"""
     retry_count = 0
     max_retries = 3
 
@@ -93,17 +94,26 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
             products = monitor.fetch_products(store_url, keywords)
             new_products = 0
 
-            for product in products:
-                product_identifier = f"{store_url}-{product['title']}-{product['price']}-{user_id}"
+            if not products:
+                logging.warning(f"[User {user_id}] No products found for {store_url}, this might indicate an access issue")
+                return 0
 
+            for product in products:
+                # Enhanced product identifier including more attributes for better restock detection
+                product_identifier = (
+                    f"{store_url}-{product['title']}-{product['price']}-"
+                    f"{product.get('variant_id', '')}-{product.get('stock', 0)}-{user_id}"
+                )
+
+                # Check if this is a new product or a restock
                 if not seen_products.exists(product_identifier):
-                    logging.info(f"[User {user_id}] New product found on {store_url}: {product['title']}")
+                    logging.info(f"[User {user_id}] New product/restock found on {store_url}: {product['title']}")
                     try:
                         webhook_success = await webhook.send_product_notification(product)
                         if webhook_success:
                             seen_products.add(product_identifier)
                             new_products += 1
-                            logging.info(f"Successfully notified about new product: {product['title']}")
+                            logging.info(f"Successfully notified about product: {product['title']}")
                         else:
                             logging.warning(f"Failed to send webhook notification for {product['title']}, will retry on next cycle")
                     except Exception as webhook_error:
@@ -116,8 +126,9 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
             retry_count += 1
             logging.error(f"[User {user_id}] Error monitoring {store_url} (attempt {retry_count}/{max_retries}): {e}")
             if retry_count < max_retries:
-                await asyncio.sleep(5 * retry_count)  # Exponential backoff
+                await asyncio.sleep(1 * retry_count)  # Further reduced backoff time for faster recovery
             else:
+                logging.error(f"[User {user_id}] Failed to monitor {store_url} after {max_retries} attempts")
                 return 0
 
 async def main():
@@ -161,7 +172,8 @@ async def main():
                         user = None
                         for _ in range(3):
                             try:
-                                user = User.query.get(user_id)
+                                # Use Session.get() instead of Query.get()
+                                user = db.session.get(User, user_id)
                                 if user and user.enabled:
                                     break
                                 await asyncio.sleep(1)
@@ -199,9 +211,9 @@ async def main():
                             logging.info(f"\n---- Monitor Cycle #{monitor_cycle} ----")
 
                             try:
-                                # Refresh user and config
+                                # Refresh user and config from database
                                 db.session.remove()
-                                user = User.query.get(user_id)
+                                user = db.session.get(User, user_id)
                                 config = MonitorConfig.query.filter_by(user_id=user_id).first()
 
                                 if not user or not user.enabled:
@@ -216,33 +228,68 @@ async def main():
                                     await asyncio.sleep(config.monitor_delay)
                                     continue
 
-                                # Process stores in parallel batches
-                                batch_size = min(10, len(stores))
+                                # Process stores in parallel batches with improved efficiency
+                                batch_size = min(20, len(stores))  # Increased from 10 to 20
                                 all_results = []
 
-                                for i in range(0, len(stores), batch_size):
-                                    batch = stores[i:i+batch_size]
-                                    tasks = [
-                                        monitor_store(
-                                            store.url,
-                                            [kw.word for kw in keywords],
-                                            monitor,
-                                            webhook,
-                                            user_seen_products[user_id],
-                                            user_id
-                                        )
-                                        for store in batch
-                                    ]
-                                    results = await asyncio.gather(*tasks, return_exceptions=True)
-                                    all_results.extend(results)
+                                # Group stores by retailer for better rate limiting
+                                stores_by_retailer = {}
+                                for store in stores:
+                                    retailer = store.url.split('/')[2]  # Extract domain
+                                    if retailer not in stores_by_retailer:
+                                        stores_by_retailer[retailer] = []
+                                    stores_by_retailer[retailer].append(store)
+
+                                # Process each retailer group separately
+                                for retailer, retailer_stores in stores_by_retailer.items():
+                                    logging.info(f"Processing {len(retailer_stores)} stores for retailer: {retailer}")
+
+                                    for i in range(0, len(retailer_stores), batch_size):
+                                        batch = retailer_stores[i:i+batch_size]
+                                        tasks = [
+                                            monitor_store(
+                                                store.url,
+                                                [kw.word for kw in keywords],
+                                                monitor,
+                                                webhook,
+                                                user_seen_products[user_id],
+                                                user_id
+                                            )
+                                            for store in batch
+                                        ]
+
+                                        # Process batch with individual error handling
+                                        try:
+                                            results = await asyncio.gather(*tasks, return_exceptions=True)
+                                            successful_results = []
+
+                                            for idx, result in enumerate(results):
+                                                if isinstance(result, Exception):
+                                                    store_url = batch[idx].url
+                                                    logging.error(f"Error processing store {store_url}: {str(result)}")
+                                                else:
+                                                    successful_results.append(result)
+
+                                            all_results.extend(successful_results)
+
+                                            # Add smaller delay between batches for the same retailer
+                                            if i + batch_size < len(retailer_stores):
+                                                await asyncio.sleep(0.25)  # Reduced delay between batches
+
+                                        except Exception as batch_error:
+                                            logging.error(f"Batch processing error for retailer {retailer}: {batch_error}")
+                                            continue
 
                                 total_new_products = sum(r for r in all_results if isinstance(r, int))
                                 logging.info(f"New products found: {total_new_products}")
 
-                                # Adaptive delay based on results
+                                # Adaptive delay based on results and retailer
                                 cycle_duration = time.time() - cycle_start_time
-                                delay_multiplier = 0.5 if total_new_products > 0 else 1.0
-                                sleep_time = max(0.1, config.monitor_delay * delay_multiplier - cycle_duration)
+
+                                # More aggressive delay reduction when products are found
+                                delay_multiplier = 0.25 if total_new_products > 0 else 1.0
+                                # Cap minimum delay at 0.05 seconds
+                                sleep_time = max(0.05, config.monitor_delay * delay_multiplier - cycle_duration)
                                 logging.info(f"Cycle completed in {cycle_duration:.2f}s, waiting {sleep_time:.2f}s")
                                 await asyncio.sleep(sleep_time)
 

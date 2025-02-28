@@ -1084,7 +1084,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.3" },
     { name = "selenium", specifier = ">=4.29.0" },
     { name = "selenium-stealth", specifier = ">=1.0.6" },
-    { name = "sqlalchemy", specifier = ">=2.0.38" },
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "twilio", specifier = ">=9.4.6" },
     { name = "undetected-chromedriver", specifier = ">=3.5.5" },

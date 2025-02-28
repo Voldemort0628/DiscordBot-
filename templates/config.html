@@ -30,7 +30,42 @@
                         {{ form.discord_webhook_url(class="form-control") }}
                         <div class="form-text">Your Discord webhook URL for notifications</div>
                     </div>
-                    {{ form.submit(class="btn btn-primary") }}
+
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#advancedConfig">
+                                    Advanced Configuration
+                                </button>
+                            </h5>
+                        </div>
+                        <div id="advancedConfig" class="collapse">
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    {{ form.min_cycle_delay.label(class="form-label") }}
+                                    {{ form.min_cycle_delay(class="form-control") }}
+                                    <div class="form-text">Minimum delay between cycles (seconds)</div>
+                                </div>
+                                <div class="mb-3">
+                                    {{ form.success_delay_multiplier.label(class="form-label") }}
+                                    {{ form.success_delay_multiplier(class="form-control") }}
+                                    <div class="form-text">Delay multiplier when products are found (lower = faster checks)</div>
+                                </div>
+                                <div class="mb-3">
+                                    {{ form.batch_size.label(class="form-label") }}
+                                    {{ form.batch_size(class="form-control") }}
+                                    <div class="form-text">Number of stores to check in parallel</div>
+                                </div>
+                                <div class="mb-3">
+                                    {{ form.initial_product_limit.label(class="form-label") }}
+                                    {{ form.initial_product_limit(class="form-control") }}
+                                    <div class="form-text">Initial number of products to fetch per store</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{ form.submit(class="btn btn-primary mt-3") }}
                 </form>
             </div>
         </div>

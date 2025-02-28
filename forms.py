@@ -35,6 +35,19 @@ class ConfigForm(FlaskForm):
     monitor_delay = IntegerField('Monitor Delay (seconds)', validators=[DataRequired()])
     max_products = IntegerField('Max Products per Store', validators=[DataRequired()])
     discord_webhook_url = StringField('Discord Webhook URL', validators=[Optional(), URL()])
+    # New advanced configuration fields
+    min_cycle_delay = FloatField('Minimum Cycle Delay (seconds)', 
+                                validators=[DataRequired()],
+                                default=0.05)
+    success_delay_multiplier = FloatField('Success Delay Multiplier',
+                                        validators=[DataRequired()],
+                                        default=0.25)
+    batch_size = IntegerField('Batch Size (stores)',
+                             validators=[DataRequired()],
+                             default=20)
+    initial_product_limit = IntegerField('Initial Product Limit',
+                                       validators=[DataRequired()],
+                                       default=150)
     submit = SubmitField('Save Configuration')
 
 class VariantScraperForm(FlaskForm):

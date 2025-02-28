@@ -48,6 +48,11 @@ class MonitorConfig(db.Model):
     rate_limit = db.Column(db.Float, default=1.0)
     monitor_delay = db.Column(db.Integer, default=30)
     max_products = db.Column(db.Integer, default=250)
+    # New configurable parameters
+    min_cycle_delay = db.Column(db.Float, default=0.05)  # Minimum delay between cycles
+    success_delay_multiplier = db.Column(db.Float, default=0.25)  # Delay multiplier when products found
+    batch_size = db.Column(db.Integer, default=20)  # Number of stores to process in parallel
+    initial_product_limit = db.Column(db.Integer, default=150)  # Initial number of products to fetch
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 class RetailScraper(db.Model):
