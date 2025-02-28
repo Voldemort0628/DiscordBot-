@@ -1,0 +1,9 @@
+=== Monitor Start: 2025-02-28 02:39:56.687607 ===
+Monitor started with PID: 159
+2025-02-28 02:39:57,816 - scraper - INFO - Initialized monitor for user Testing6 (ID: 10)
+2025-02-28 02:39:57,817 - scraper - INFO - - Discord Webhook: Configured
+2025-02-28 02:39:57,817 - scraper - INFO - - Rate limit: 1.0 req/s
+2025-02-28 02:39:57,817 - scraper - INFO - - Monitor delay: 30s
+2025-02-28 02:39:57,818 - scraper - INFO - - Proxies: Enabled
+2025-02-28 02:39:57,901 - scraper - INFO - Processing 21 stores with 9 keywords
+2025-02-28 02:40:25,863 - scraper - INFO - Found 0 matching products
