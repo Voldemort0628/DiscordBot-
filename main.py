@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Set
 import time
 import logging
+import logging.handlers
 from datetime import datetime, timedelta
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import RateLimitedDiscordWebhook
@@ -18,20 +19,26 @@ log_dir.mkdir(exist_ok=True)
 
 log_filename = f'monitor_{datetime.now().strftime("%Y%m%d")}.log'
 log_path = log_dir / log_filename
-heartbeat_path = log_dir / 'heartbeat.log'
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(log_path)
-    ]
+# Configure root logger with both file and console output
+root_handler = logging.handlers.RotatingFileHandler(
+    log_path,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
 )
+root_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+logging.root.handlers = []
+logging.root.addHandler(root_handler)
+logging.root.addHandler(console_handler)
+logging.root.setLevel(logging.INFO)
 
 # Add a separate logger for heartbeat
 heartbeat_logger = logging.getLogger('heartbeat')
-heartbeat_handler = logging.FileHandler(heartbeat_path)
+heartbeat_handler = logging.FileHandler(log_dir / 'heartbeat.log')
 heartbeat_formatter = logging.Formatter('%(asctime)s - %(message)s')
 heartbeat_handler.setFormatter(heartbeat_formatter)
 heartbeat_logger.addHandler(heartbeat_handler)

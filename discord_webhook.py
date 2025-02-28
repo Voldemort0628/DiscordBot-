@@ -13,11 +13,14 @@ class RateLimitedDiscordWebhook:
     def __init__(self, webhook_url):
         self.webhook_url = webhook_url
         self.last_request_time = 0
-        self.rate_limit_window = 1.25  # seconds between requests
-        self.max_retries = 5
+        self.rate_limit_window = 2  # Increased from 1.25 to 2 seconds between requests
+        self.max_retries = 3  # Reduced from 5 to 3 to avoid excessive retries
         self.rate_limit_remaining = 5
         self.rate_limit_reset = 0
         self._lock = asyncio.Lock()
+        self._pending_notifications = []
+        self._batch_size = 5  # Maximum webhooks to combine in one message
+        self._batch_timeout = 10  # Seconds to wait before sending a non-full batch
 
     async def send_product_notification(self, product):
         """Send product notification with adaptive rate limiting and retry logic"""
@@ -32,24 +35,24 @@ class RateLimitedDiscordWebhook:
                         await asyncio.sleep(wait_time)
                     elif current_time - self.last_request_time < self.rate_limit_window:
                         sleep_time = self.rate_limit_window - (current_time - self.last_request_time)
-                        sleep_time += random.uniform(0.05, 0.2)  # Add jitter
+                        sleep_time += random.uniform(0.1, 0.3)  # Increased jitter
                         await asyncio.sleep(sleep_time)
 
-                # Create webhook content
+                # Create webhook content with validation
                 embed = {
-                    "title": product["title"],
-                    "url": product["url"],
+                    "title": str(product["title"])[:256],  # Discord limit
+                    "url": str(product["url"])[:512],  # Discord limit
                     "color": INFO_COLOR,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
                 if product.get("image_url"):
-                    embed["thumbnail"] = {"url": product["image_url"]}
+                    embed["thumbnail"] = {"url": str(product["image_url"])[:512]}
 
                 embed["fields"] = [
                     {
                         "name": "Price",
-                        "value": f"${product['price']}" if isinstance(product['price'], (int, float)) else product['price'],
+                        "value": f"${product['price']}" if isinstance(product['price'], (int, float)) else str(product['price'])[:1024],
                         "inline": True
                     }
                 ]
@@ -57,7 +60,7 @@ class RateLimitedDiscordWebhook:
                 if "retailer" in product:
                     embed["fields"].append({
                         "name": "Retailer",
-                        "value": product["retailer"],
+                        "value": str(product["retailer"])[:1024],
                         "inline": True
                     })
 
@@ -72,9 +75,11 @@ class RateLimitedDiscordWebhook:
                             size_text = f"[{size_text}]({cart_url})"
                         sizes_text.append(size_text)
 
+                    # Ensure size text doesn't exceed Discord's limit
+                    sizes_value = "\n".join(sizes_text)[:1024]
                     embed["fields"].append({
                         "name": "Sizes / Stock",
-                        "value": "\n".join(sizes_text),
+                        "value": sizes_value,
                         "inline": False
                     })
 
@@ -85,25 +90,40 @@ class RateLimitedDiscordWebhook:
                         f"[Product Link]({product['url']}) | Stock: {product.get('stock', 0)}",
                     ]
 
+                    # Ensure links text doesn't exceed Discord's limit
+                    links_value = "\n".join(links_text)[:1024]
                     embed["fields"].append({
                         "name": "Links",
-                        "value": "\n".join(links_text),
+                        "value": links_value,
                         "inline": False
                     })
 
                 payload = {
                     "username": "SoleAddictionsLLC Monitor",
-                    "avatar_url": "https://cdn.shopify.com/shopifycloud/brochure/assets/brand-assets/shopify-logo-primary-logo-456baa801ee66a0a435671082365958316831c9960c480451dd0330bcdae304f.svg",
                     "embeds": [embed]
                 }
 
+                # Validate payload size (Discord limit is 8MB)
+                payload_size = len(json.dumps(payload).encode('utf-8'))
+                if payload_size > 8_000_000:  # 8MB limit
+                    logging.error(f"Payload too large ({payload_size} bytes), truncating content")
+                    # Truncate fields if necessary
+                    while payload_size > 8_000_000 and embed["fields"]:
+                        embed["fields"].pop()
+                        payload_size = len(json.dumps(payload).encode('utf-8'))
+
+                logging.info(f"Sending webhook notification - Attempt {attempt + 1}/{self.max_retries}")
+                logging.debug(f"Webhook payload: {json.dumps(payload, indent=2)}")
+
                 try:
-                    async with aiohttp.ClientSession() as session:
+                    conn = aiohttp.TCPConnector(ssl=False, force_close=True, ttl_dns_cache=300)
+                    timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_read=10)
+
+                    async with aiohttp.ClientSession(connector=conn, timeout=timeout) as session:
                         async with session.post(
                             self.webhook_url,
                             json=payload,
                             headers={"Content-Type": "application/json"},
-                            timeout=aiohttp.ClientTimeout(total=5)
                         ) as response:
                             # Update rate limit tracking
                             self.last_request_time = time.time()
@@ -120,10 +140,23 @@ class RateLimitedDiscordWebhook:
                                 await asyncio.sleep(retry_after)
                                 continue
 
-                            await response.read()
-                            response.raise_for_status()
-                            logging.info(f"Successfully sent webhook notification for {product['title']}")
-                            return True
+                            # Read response body before raising for status
+                            response_text = await response.text()
+                            logging.info(f"Discord response status: {response.status}")
+                            logging.debug(f"Discord response headers: {dict(response.headers)}")
+                            logging.debug(f"Discord response body: {response_text}")
+
+                            try:
+                                response.raise_for_status()
+                                logging.info(f"Successfully sent webhook notification for {product['title']}")
+                                return True
+                            except aiohttp.ClientResponseError as e:
+                                if response.status == 400:
+                                    logging.error(f"Bad request error. Response: {response_text}")
+                                    # If it's a payload issue, don't retry
+                                    if "payload" in response_text.lower():
+                                        return False
+                                raise  # Re-raise for other status codes
 
                 except aiohttp.ClientError as e:
                     logging.error(f"Network error sending Discord webhook for {product['title']}: {str(e)}")
