@@ -9,6 +9,9 @@ import socket
 import dns.resolver
 import trafilatura
 from urllib.parse import urlparse
+import aiohttp
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 class RateLimiter:
     def __init__(self, rate_limit):
@@ -44,15 +47,63 @@ class ShopifyMonitor:
             dns.resolver.Resolver(),
             dns.resolver.Resolver(configure=False)
         ]
-        self.resolvers[1].nameservers = ['8.8.8.8', '8.8.4.4']
+        self.resolvers[1].nameservers = ['8.8.8.8', '8.8.4.4']  # Use Google DNS as backup
+
+        # Connection pooling settings
+        self.max_connections = 100  # Increased from default
+        self.connector = aiohttp.TCPConnector(
+            limit=self.max_connections,
+            ttl_dns_cache=300,
+            ssl=False,
+            force_close=False,  # Allow connection reuse
+            use_dns_cache=True
+        )
+        self.timeout = aiohttp.ClientTimeout(total=30, connect=10, sock_read=10)
+        self.session_pool = {}  # Store sessions per domain
+        self.session_pool_lock = asyncio.Lock()
+        self.thread_pool = ThreadPoolExecutor(max_workers=20)  # For CPU-bound tasks
+
+    async def get_session(self, domain: str) -> aiohttp.ClientSession:
+        """Get or create a session for a specific domain"""
+        async with self.session_pool_lock:
+            if domain not in self.session_pool:
+                self.session_pool[domain] = aiohttp.ClientSession(
+                    connector=self.connector,
+                    timeout=self.timeout,
+                    headers={
+                        'User-Agent': USER_AGENT,
+                        "Accept-Encoding": "gzip, deflate",
+                        "Cache-Control": "no-cache"
+                    }
+                )
+            return self.session_pool[domain]
 
     def _resolve_domain(self, domain: str) -> str:
+        """Resolve domain with caching and multiple DNS servers"""
         if domain in self.dns_cache:
-            if time.time() - self.dns_cache[domain]['timestamp'] < 3600:
+            if time.time() - self.dns_cache[domain]['timestamp'] < 3600:  # 1 hour cache
                 return self.dns_cache[domain]['ip']
+            else:
+                # Clear expired cache entry
+                del self.dns_cache[domain]
 
-        for resolver in self.resolvers:
+        # Try multiple DNS resolvers with fallback
+        resolver_list = [
+            dns.resolver.Resolver(),  # System default
+            dns.resolver.Resolver(configure=False),  # Google DNS
+            dns.resolver.Resolver(configure=False),  # Cloudflare DNS
+            dns.resolver.Resolver(configure=False)   # OpenDNS
+        ]
+
+        resolver_list[1].nameservers = ['8.8.8.8', '8.8.4.4']
+        resolver_list[2].nameservers = ['1.1.1.1', '1.0.0.1']
+        resolver_list[3].nameservers = ['208.67.222.222', '208.67.220.220']
+
+        errors = []
+        for resolver in resolver_list:
             try:
+                resolver.timeout = 2.0  # Reduced timeout for faster fallback
+                resolver.lifetime = 4.0  # Overall query lifetime
                 answers = resolver.resolve(domain, 'A')
                 if answers:
                     ip = answers[0].address
@@ -60,38 +111,61 @@ class ShopifyMonitor:
                         'ip': ip,
                         'timestamp': time.time()
                     }
-                    logging.info(f"Successfully resolved {domain} to {ip}")
+                    logging.info(f"Successfully resolved {domain} to {ip} using {resolver.nameservers}")
                     return ip
             except Exception as e:
-                logging.warning(f"DNS resolution failed for {domain} using resolver {resolver}: {e}")
+                errors.append(f"DNS resolution failed for {domain} using {resolver.nameservers}: {e}")
                 continue
 
-        return None
+        # If all resolvers fail, try a direct socket connection with a shorter timeout
+        try:
+            socket.setdefaulttimeout(3.0)  # Shorter timeout for direct resolution
+            ip = socket.gethostbyname(domain)
+            self.dns_cache[domain] = {
+                'ip': ip,
+                'timestamp': time.time()
+            }
+            logging.info(f"Resolved {domain} to {ip} using socket fallback")
+            return ip
+        except Exception as e:
+            errors.append(f"Socket resolution failed for {domain}: {e}")
+            logging.error(f"All DNS resolution methods failed for {domain}:\n" + "\n".join(errors))
+            return None
 
     def _validate_store_url(self, store_url: str) -> bool:
+        """Validate store URL with enhanced error handling and recovery"""
         try:
             parsed_url = urlparse(store_url)
             domain = parsed_url.netloc
-            ip = self._resolve_domain(domain)
-            if not ip:
-                logging.error(f"Failed to resolve domain {domain}")
-                return False
 
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(5)
-            result = sock.connect_ex((ip, 443))
-            sock.close()
+            # Try multiple times with increasing timeouts
+            for timeout in [3, 5, 10]:
+                try:
+                    ip = self._resolve_domain(domain)
+                    if not ip:
+                        continue
 
-            if result != 0:
-                logging.error(f"Failed to connect to {domain} ({ip}:443)")
-                return False
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(timeout)
+                    result = sock.connect_ex((ip, 443))
+                    sock.close()
 
-            return True
+                    if result == 0:
+                        return True
+
+                    logging.warning(f"Connection attempt failed for {domain} ({ip}:443) with timeout {timeout}s")
+                except socket.error as e:
+                    logging.warning(f"Socket error for {domain} with timeout {timeout}s: {e}")
+                    continue
+
+            logging.error(f"Store validation failed for {store_url} after all attempts")
+            return False
+
         except Exception as e:
             logging.error(f"Store validation error for {store_url}: {e}")
             return False
 
-    def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
+    async def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
         logging.info(f"Fetching products from {store_url} with keywords: {keywords}")
 
         if not self._validate_store_url(store_url):
@@ -100,49 +174,74 @@ class ShopifyMonitor:
 
         if store_url in self.failed_stores:
             retry_count = self.retry_counts.get(store_url, 0)
-            backoff = min(300, 2 ** retry_count)
+            backoff = min(300, 2 ** retry_count)  # Cap at 5 minutes
             if time.time() - self.last_request_time < backoff:
                 logging.info(f"Skipping {store_url} due to recent failure (backoff: {backoff}s)")
                 return []
             self.retry_counts[store_url] = retry_count + 1
 
+        domain = urlparse(store_url).netloc
+        session = await self.get_session(domain)
+        max_retries = 3
+        products_data = None
+
         try:
-            initial_limit = 150
+            initial_limit = 150  # Increased from initial fetch
             products_url = f"{store_url}/products.json?limit={initial_limit}"
 
             logging.info(f"Making initial request to {products_url}")
 
-            max_retries = 3
-            products_data = None
-
             for attempt in range(max_retries):
                 try:
                     with self.rate_limiter:
-                        response = self.session.get(
+                        async with session.get(
                             products_url,
-                            timeout=5,
+                            timeout=self.timeout,
                             headers={
                                 "Accept-Encoding": "gzip, deflate",
                                 "Cache-Control": "no-cache"
                             }
-                        )
-                        response.raise_for_status()
-                        products_data = response.json()
-                        break
-                except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+                        ) as response:
+                            if response.status == 200:
+                                products_data = await response.json()
+                                break
+                            elif response.status == 429:  # Rate limited
+                                retry_after = int(response.headers.get('Retry-After', 5))
+                                logging.warning(f"Rate limited by {domain}, waiting {retry_after}s")
+                                await asyncio.sleep(retry_after)
+                                continue
+                            else:
+                                logging.warning(f"Failed request: {response.status} - {await response.text()}")
+                except Exception as e:
                     if attempt == max_retries - 1:
                         logging.warning(f"API fetch failed, attempting fallback for {store_url}")
                         try:
-                            downloaded = trafilatura.fetch_url(store_url)
+                            # Run CPU-intensive scraping in thread pool
+                            downloaded = await asyncio.get_event_loop().run_in_executor(
+                                self.thread_pool,
+                                trafilatura.fetch_url,
+                                store_url
+                            )
                             if downloaded:
-                                extracted = trafilatura.extract(downloaded, include_comments=False, 
-                                                             include_tables=False, no_fallback=False)
+                                extracted = await asyncio.get_event_loop().run_in_executor(
+                                    self.thread_pool,
+                                    trafilatura.extract,
+                                    downloaded,
+                                    False,  # include_comments
+                                    False,  # include_tables
+                                    False   # no_fallback
+                                )
                                 if extracted:
-                                    products_data = self._process_fallback_content(extracted, keywords)
+                                    products_data = await asyncio.get_event_loop().run_in_executor(
+                                        self.thread_pool,
+                                        self._process_fallback_content,
+                                        extracted,
+                                        keywords
+                                    )
                         except Exception as fallback_error:
                             logging.error(f"Fallback method failed for {store_url}: {fallback_error}")
                     else:
-                        time.sleep(1 * (attempt + 1))
+                        await asyncio.sleep(1 * (attempt + 1))
 
             if not products_data:
                 logging.error(f"Failed to fetch products from {store_url} after all attempts")
@@ -153,12 +252,36 @@ class ShopifyMonitor:
             logging.info(f"Retrieved {total_products} products from initial request")
 
             lowercase_keywords = [kw.lower() for kw in keywords]
-            for product in products_data.get("products", []):
-                if self._matches_keywords(product, lowercase_keywords):
-                    processed_product = self._process_product(store_url, product)
-                    if processed_product:
-                        matching_products.append(processed_product)
-                        logging.info(f"Found matching product: {product['title']}")
+
+            # Process products in thread pool to avoid blocking
+            def process_product_batch(products_batch):
+                results = []
+                for product in products_batch:
+                    if self._matches_keywords(product, lowercase_keywords):
+                        processed = self._process_product(store_url, product)
+                        if processed:
+                            results.append(processed)
+                return results
+
+            # Split products into batches for parallel processing
+            batch_size = 50
+            products = products_data.get("products", [])
+            batches = [products[i:i + batch_size] for i in range(0, len(products), batch_size)]
+
+            # Process batches in parallel
+            tasks = []
+            for batch in batches:
+                task = asyncio.get_event_loop().run_in_executor(
+                    self.thread_pool,
+                    process_product_batch,
+                    batch
+                )
+                tasks.append(task)
+
+            # Gather results
+            batch_results = await asyncio.gather(*tasks)
+            for batch_result in batch_results:
+                matching_products.extend(batch_result)
 
             self.failed_stores.discard(store_url)
             self.retry_counts.pop(store_url, None)
@@ -168,9 +291,7 @@ class ShopifyMonitor:
 
         except Exception as e:
             logging.error(f"Error fetching products from {store_url}: {e}")
-            if isinstance(e, (requests.exceptions.ConnectionError, 
-                            requests.exceptions.Timeout,
-                            requests.exceptions.SSLError)):
+            if isinstance(e, (aiohttp.ClientError, asyncio.TimeoutError)):
                 self.failed_stores.add(store_url)
                 logging.warning(f"Added {store_url} to failed stores list")
             return []

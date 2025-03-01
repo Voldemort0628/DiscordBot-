@@ -118,14 +118,14 @@ async def send_heartbeat(user_id: int):
             await asyncio.sleep(60)  # Shorter retry on error
 
 async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMonitor,
-                       webhook: RateLimitedDiscordWebhook, seen_products: TTLCache, user_id: int):
+                        webhook: RateLimitedDiscordWebhook, seen_products: TTLCache, user_id: int):
     """Monitors a single store for products with enhanced error handling and detection"""
     retry_count = 0
     max_retries = 3
 
     while retry_count < max_retries:
         try:
-            products = monitor.fetch_products(store_url, keywords)
+            products = await monitor.fetch_products(store_url, keywords)
             new_products = 0
 
             if not products:
