@@ -125,7 +125,7 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
 
     while retry_count < max_retries:
         try:
-            products = await monitor.fetch_products(store_url, keywords)
+            products = await monitor.async_fetch_products(store_url, keywords)
             new_products = 0
 
             if not products:
@@ -263,7 +263,7 @@ async def main():
                                     continue
 
                                 # Process stores in parallel batches with improved efficiency
-                                batch_size = min(20, len(stores))  # Increased from 10 to 20
+                                batch_size = min(20, len(stores))  # Process up to 20 stores at once
                                 all_results = []
 
                                 # Group stores by retailer for better rate limiting

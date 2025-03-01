@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import aiohttp
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import re
 
 class RateLimiter:
     def __init__(self, rate_limit):
@@ -165,7 +166,7 @@ class ShopifyMonitor:
             logging.error(f"Store validation error for {store_url}: {e}")
             return False
 
-    async def fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
+    async def async_fetch_products(self, store_url: str, keywords: List[str]) -> List[Dict]:
         logging.info(f"Fetching products from {store_url} with keywords: {keywords}")
 
         if not self._validate_store_url(store_url):
@@ -296,22 +297,47 @@ class ShopifyMonitor:
                 logging.warning(f"Added {store_url} to failed stores list")
             return []
 
-    def _matches_keywords(self, product: Dict, lowercase_keywords: List[str]) -> bool:
+    def _matches_keywords(self, product: Dict, keywords: List[str]) -> bool:
+        """
+        Enhanced keyword matching with stricter rules and exact phrase matching
+        """
         if not product:
             return False
 
-        searchable_fields = [
-            product.get("title", "").lower(),
-            product.get("vendor", "").lower(),
-            product.get("product_type", "").lower(),
-        ]
-        searchable_fields.extend([tag.lower() for tag in product.get("tags", [])])
+        # Convert product fields to lowercase for case-insensitive matching
+        title = product.get("title", "").lower()
+        vendor = product.get("vendor", "").lower()
+        product_type = product.get("product_type", "").lower()
+        tags = [tag.lower() for tag in product.get("tags", [])]
 
-        return any(
-            any(keyword in field for keyword in lowercase_keywords)
-            for field in searchable_fields
-            if field
-        )
+        # Combine all searchable text
+        searchable_text = f"{title} {vendor} {product_type} {' '.join(tags)}"
+
+        lowercase_keywords = [kw.lower() for kw in keywords]
+
+        # For exact phrase matching (e.g., "Air Jordan 1")
+        for keyword in lowercase_keywords:
+            # Split multi-word keywords for more accurate matching
+            keyword_parts = keyword.split()
+            if len(keyword_parts) > 1:
+                # For multi-word keywords, all parts must be present in order
+                found_all = True
+                current_pos = 0
+                for part in keyword_parts:
+                    pos = searchable_text.find(part, current_pos)
+                    if pos == -1:
+                        found_all = False
+                        break
+                    current_pos = pos + len(part)
+                if found_all:
+                    return True
+            else:
+                # For single-word keywords, require word boundary match
+                word_pattern = f"\\b{re.escape(keyword)}\\b"
+                if re.search(word_pattern, searchable_text):
+                    return True
+
+        return False
 
     def _process_fallback_content(self, content: str, keywords: List[str]) -> Dict:
         products = {"products": []}
