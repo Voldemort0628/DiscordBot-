@@ -130,6 +130,7 @@ def create_app():
 
         return render_template('register.html', form=form)
         
+
     @app.route('/stores', methods=['GET', 'POST'])
     @login_required
     def manage_stores():
@@ -360,7 +361,7 @@ def create_app():
         app.config['DISCORD_REDIRECT_URI'] = 'http://localhost:5000/oauth-callback'
         logging.info('Running in development mode with local redirect URI')
     else:
-        app.config['DISCORD_REDIRECT_URI'] = f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.co/oauth-callback'
+        app.config['DISCORD_REDIRECT_URI'] = f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.dev/oauth-callback'
         logging.info('Running in production mode with Replit redirect URI')
 
     logging.info(f'Configured Discord redirect URI: {app.config["DISCORD_REDIRECT_URI"]}')

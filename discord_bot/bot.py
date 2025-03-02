@@ -40,7 +40,7 @@ class MonitorBot(commands.Bot):
         logging.info(f"REPL_OWNER: {repl_owner}")
 
         if repl_slug and repl_owner:
-            self.api_base_url = f'https://{repl_slug}.{repl_owner}.repl.co/api'
+            self.api_base_url = f'https://{repl_slug}.{repl_owner}.repl.dev/api'
         else:
             self.api_base_url = 'http://localhost:5000/api'
 
