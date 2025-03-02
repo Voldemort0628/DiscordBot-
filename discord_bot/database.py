@@ -1,79 +1,80 @@
 import logging
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-import os
 import secrets
-import sys
-
-# Add the root directory to the Python path to allow importing models
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(root_dir)
-
-from models import User, MonitorConfig, db
+import os
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('discord_bot.log'),
+        logging.StreamHandler()
+    ]
 )
 
-# Get database URL from environment
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL must be set")
+def execute_sql_tool(query):
+    # Replace this with your actual SQL execution function
+    # This is a placeholder,  replace with your database connection logic.
+    #  Example using psycopg2:
+    import psycopg2
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    cur = conn.cursor()
+    cur.execute(query)
+    results = cur.fetchall()
+    conn.commit()
+    cur.close()
+    conn.close()
+    return results
 
-# Create database engine
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
+
 
 def verify_discord_user(discord_user_id: str, discord_username: str) -> dict:
     """
     Create or verify a Discord user in the database
     Returns dict with status and message
     """
-    session = Session()
     try:
-        # Check if user already exists
-        existing_user = session.query(User).filter_by(discord_user_id=discord_user_id).first()
-        if existing_user:
+        # First check if user exists
+        query = f"""
+        SELECT username FROM "user" WHERE discord_user_id = '{discord_user_id}';
+        """
+        result = execute_sql_tool(query)
+
+        if result and result[0]:
             logging.info(f"Found existing user for Discord ID {discord_user_id}")
             return {
                 'success': True,
                 'message': 'Account already verified',
-                'username': existing_user.username
+                'username': result[0][0]
             }
 
         # Create new user
         username = f"discord_{discord_username}"
         password = secrets.token_urlsafe(32)
 
-        new_user = User(
-            username=username,
-            discord_user_id=discord_user_id,
-            enabled=True
+        # Insert new user
+        query = f"""
+        INSERT INTO "user" (username, discord_user_id, enabled)
+        VALUES ('{username}', '{discord_user_id}', true)
+        RETURNING id;
+        """
+        result = execute_sql_tool(query)
+        user_id = result[0][0]
+
+        # Create monitor config
+        query = f"""
+        INSERT INTO monitor_config (
+            user_id, rate_limit, monitor_delay, max_products,
+            min_cycle_delay, success_delay_multiplier, batch_size, initial_product_limit
         )
-        new_user.set_password(password)
+        VALUES (
+            {user_id}, 1.0, 30, 250,
+            0.05, 0.25, 20, 150
+        );
+        """
+        execute_sql_tool(query)
 
-        # First commit the user to get ID
-        session.add(new_user)
-        session.flush()
-
-        # Create default monitor config
-        config = MonitorConfig(
-            user_id=new_user.id,
-            rate_limit=1.0,
-            monitor_delay=30,
-            max_products=250,
-            min_cycle_delay=0.05,
-            success_delay_multiplier=0.25,
-            batch_size=20,
-            initial_product_limit=150
-        )
-
-        session.add(config)
-        session.commit()
-
-        logging.info(f"Successfully created new user {username} with Discord ID {discord_user_id}")
+        logging.info(f"Successfully created user {username} with Discord ID {discord_user_id}")
 
         return {
             'success': True,
@@ -82,11 +83,8 @@ def verify_discord_user(discord_user_id: str, discord_username: str) -> dict:
         }
 
     except Exception as e:
-        session.rollback()
         logging.error(f"Error during verification for Discord ID {discord_user_id}: {str(e)}")
         return {
             'success': False,
             'message': f'Error during verification: {str(e)}'
         }
-    finally:
-        session.close()
