@@ -175,8 +175,8 @@ class MonitorCommands(commands.Cog):
                         'discord_user_id': str(ctx.author.id)
                     }
                 ) as resp:
+                    data = await resp.json()
                     if resp.status == 200:
-                        data = await resp.json()
                         embed = discord.Embed(
                             title="✅ Verification Successful",
                             description="Your Discord account has been verified and linked to the monitor.",
@@ -184,11 +184,10 @@ class MonitorCommands(commands.Cog):
                         )
                         embed.add_field(name="Username", value=data['username'])
                         await ctx.send(embed=embed)
-                    elif resp.status == 401:
-                        await ctx.send("❌ Invalid verification attempt. Please try again.")
                     else:
-                        error_data = await resp.json()
-                        await ctx.send(f"❌ Error during verification: {error_data.get('error', 'Unknown error')}")
+                        error_msg = data.get('error', 'Unknown error')
+                        logging.error(f"Verification failed: {error_msg}")
+                        await ctx.send(f"❌ Error during verification: {error_msg}")
         except Exception as e:
             logging.error(f"Error verifying user: {e}")
             await ctx.send("❌ Error during verification. Please try again later.")

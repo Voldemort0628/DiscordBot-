@@ -1,6 +1,6 @@
 import os
 from flask import Blueprint, jsonify, request
-from models import db, User, Keyword, MonitorConfig # Added MonitorConfig import
+from models import db, User, Keyword, MonitorConfig
 from flask_login import current_user
 import logging
 import hmac
@@ -14,7 +14,7 @@ def verify_bot_request():
     if not api_key:
         return False
     expected_key = os.getenv('MONITOR_API_KEY')
-    return hmac.compare_digest(api_key, expected_key)
+    return hmac.compare_digest(str(api_key), str(expected_key))
 
 @api.before_request
 def verify_request():
@@ -81,12 +81,25 @@ def link_discord_account():
         )
         user.set_password(password)
 
-        # Add default monitor configuration
-        config = MonitorConfig(user_id=user.id)
-
+        # First commit the user to get an ID
         db.session.add(user)
+        db.session.commit()
+
+        # Now create the monitor config with the user's ID
+        config = MonitorConfig(
+            user_id=user.id,
+            rate_limit=1.0,
+            monitor_delay=30,
+            max_products=250,
+            min_cycle_delay=0.05,
+            success_delay_multiplier=0.25,
+            batch_size=20,
+            initial_product_limit=150
+        )
         db.session.add(config)
         db.session.commit()
+
+        logging.info(f"Successfully created user {username} with Discord ID {discord_user_id}")
 
         return jsonify({
             'message': 'Discord account linked successfully',
@@ -96,7 +109,7 @@ def link_discord_account():
     except Exception as e:
         logging.error(f"Error linking Discord account: {e}")
         db.session.rollback()
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @api.route('/start', methods=['POST'])
 def start_monitor():
