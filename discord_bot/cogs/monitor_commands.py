@@ -1,8 +1,8 @@
+import os
 import discord
 from discord.ext import commands
 import logging
 import psycopg2
-import os
 import sys
 import psutil
 import time
@@ -28,19 +28,35 @@ class MonitorCommands(commands.Cog):
         self._command_cooldowns[key] = now
         return True
 
-    @commands.command(name='verify')
+    async def _handle_db_operation(self, operation):
+        """Execute database operations with proper connection handling"""
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+            cur = conn.cursor()
+            return await operation(conn, cur)
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Database error: {e}")
+            return None
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+
+    @commands.command(name='verify', help="Verify yourself to use the monitor")
     async def verify_user(self, ctx):
-        """Verify yourself to use the monitor"""
         if not await self._check_cooldown(ctx):
             return
 
         async def db_verify(conn, cur):
-            # Check existing user
             cur.execute('SELECT username FROM "user" WHERE discord_user_id = %s', (str(ctx.author.id),))
             if cur.fetchone():
                 return "✅ Your account is already verified!"
 
-            # Create new user
             username = f"discord_{ctx.author.name}"
             cur.execute(
                 'INSERT INTO "user" (username, discord_user_id, enabled) VALUES (%s, %s, true) RETURNING id',
@@ -48,7 +64,6 @@ class MonitorCommands(commands.Cog):
             )
             user_id = cur.fetchone()[0]
 
-            # Create monitor config
             cur.execute(
                 '''INSERT INTO monitor_config (
                     user_id, rate_limit, monitor_delay, max_products,
@@ -62,9 +77,8 @@ class MonitorCommands(commands.Cog):
         result = await self._handle_db_operation(db_verify)
         await ctx.send(result or "❌ Error during verification")
 
-    @commands.command(name='status')
+    @commands.command(name='status', help="Check your monitor status")
     async def check_status(self, ctx):
-        """Check your monitor status"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -105,9 +119,8 @@ class MonitorCommands(commands.Cog):
             logger.error(f"Error checking monitor status: {e}")
             return False
 
-    @commands.command(name='start')
+    @commands.command(name='start', help="Start your monitor")
     async def start_monitor(self, ctx):
-        """Start your monitor"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -119,7 +132,7 @@ class MonitorCommands(commands.Cog):
             result = cur.fetchone()
             if not result:
                 return None
-            user_id, custom_webhook = result
+            user_id, webhook_url = result
 
             cur.execute(
                 'SELECT COUNT(*) FROM store WHERE user_id = %s AND enabled = true;',
@@ -132,7 +145,7 @@ class MonitorCommands(commands.Cog):
             if self._is_monitor_running(user_id):
                 return "Monitor is already running!"
 
-            webhook_url = custom_webhook if custom_webhook else os.environ.get('DISCORD_WEBHOOK_URL')
+            webhook_url = webhook_url if webhook_url else os.environ.get('DISCORD_WEBHOOK_URL')
             cur.execute(
                 'UPDATE "user" SET enabled = true WHERE id = %s;',
                 (user_id,)
@@ -163,10 +176,9 @@ class MonitorCommands(commands.Cog):
         for retry in range(max_retries):
             await asyncio.sleep(2)
             if self._is_monitor_running(user_id):
-                webhook_type = "custom" if custom_webhook else "default"
                 success_msg = [
                     "✅ Monitor started successfully!",
-                    f"Using {webhook_type} webhook for notifications.",
+                    f"Using {'custom' if webhook_url != os.environ.get('DISCORD_WEBHOOK_URL') else 'default'} webhook.",
                     f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
                     "Use !status to check monitor status."
                 ]
@@ -177,10 +189,8 @@ class MonitorCommands(commands.Cog):
 
         await status_message.edit(content="❌ Failed to start monitor. Please try again later.")
 
-
-    @commands.command(name='stop')
+    @commands.command(name='stop', help="Stop your monitor")
     async def stop_monitor(self, ctx):
-        """Stop your monitor"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -233,9 +243,8 @@ class MonitorCommands(commands.Cog):
         else:
             await ctx.send("Monitor was not running.")
 
-    @commands.command(name='keywords')
+    @commands.command(name='keywords', help="List your keywords")
     async def list_keywords(self, ctx):
-        """List your keywords"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -266,9 +275,8 @@ class MonitorCommands(commands.Cog):
             )
         await ctx.send(embed=embed)
 
-    @commands.command(name='add_keyword')
+    @commands.command(name='add_keyword', help="Add a keyword to monitor")
     async def add_keyword(self, ctx, *, keyword: str):
-        """Add a keyword to monitor"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -299,9 +307,8 @@ class MonitorCommands(commands.Cog):
         result = await self._handle_db_operation(db_add_keyword)
         await ctx.send(result or "❌ Error adding keyword.")
 
-    @commands.command(name='remove_keyword')
+    @commands.command(name='remove_keyword', help="Remove a keyword from your monitor")
     async def remove_keyword(self, ctx, *, keyword: str):
-        """Remove a keyword from your monitor"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -329,9 +336,8 @@ class MonitorCommands(commands.Cog):
         result = await self._handle_db_operation(db_remove_keyword)
         await ctx.send(result or "❌ Error removing keyword.")
 
-    @commands.command(name='preset_stores')
+    @commands.command(name='preset_stores', help="Show and enable preset stores to monitor")
     async def preset_stores(self, ctx):
-        """Show and enable preset stores to monitor"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -387,9 +393,8 @@ class MonitorCommands(commands.Cog):
         embed.add_field(name="Total Preset Stores", value=str(total_stores))
         await ctx.send(embed=embed)
 
-    @commands.command(name='add_store')
+    @commands.command(name='add_store', help="Add a store URL to monitor")
     async def add_store(self, ctx, *, store_url: str):
-        """Add a store URL to monitor"""
         if not await self._check_cooldown(ctx):
             return
         if not store_url.startswith(('http://', 'https://')):
@@ -422,9 +427,8 @@ class MonitorCommands(commands.Cog):
         result = await self._handle_db_operation(db_add_store)
         await ctx.send(result or "❌ Error adding store.")
 
-    @commands.command(name='list_stores')
+    @commands.command(name='list_stores', help="List all your active stores")
     async def list_stores(self, ctx):
-        """List all your active stores"""
         if not await self._check_cooldown(ctx):
             return
 
@@ -472,9 +476,8 @@ class MonitorCommands(commands.Cog):
         embed.set_footer(text="Use !add_store to add more stores or !preset_stores to add preset stores")
         await ctx.send(embed=embed)
 
-    @commands.command(name='set_webhook')
+    @commands.command(name='set_webhook', help="Set your custom Discord webhook URL (via DM only)")
     async def set_webhook(self, ctx):
-        """Set your custom Discord webhook URL (via DM only)"""
         if not await self._check_cooldown(ctx):
             return
         if not isinstance(ctx.channel, discord.DMChannel):
@@ -517,26 +520,6 @@ class MonitorCommands(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.send("Webhook setup timed out. Please try again.")
 
-    async def _handle_db_operation(self, operation):
-        """Execute database operations with proper connection handling"""
-        conn = None
-        cur = None
-        try:
-            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-            cur = conn.cursor()
-            return await operation(conn, cur)
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            logger.error(f"Database error: {e}")
-            return None
-        finally:
-            if cur:
-                cur.close()
-            if conn:
-                conn.close()
-
-
 async def setup(bot):
     await bot.add_cog(MonitorCommands(bot))
-    logger.info("Monitor commands cog loaded")
+    logger.info("Monitor commands loaded")

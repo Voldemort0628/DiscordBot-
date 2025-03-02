@@ -12,29 +12,20 @@ logging.basicConfig(
     ]
 )
 
-logger = logging.getLogger('DiscordBot')
-
 class MonitorBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
 
-        # Use the default help command
         super().__init__(
             command_prefix='!',
-            intents=intents
+            intents=intents,
+            description="Monitor Bot - Track product restocks and updates"
         )
 
     async def setup_hook(self):
-        """Initial setup"""
-        try:
-            # Only load monitor commands, use default help
-            await self.load_extension('cogs.monitor_commands')
-            logger.info("Monitor commands loaded")
-        except Exception as e:
-            logger.error(f"Error loading extension: {e}")
-            raise
+        await self.load_extension('cogs.monitor_commands')
 
 def main():
     token = os.environ.get('DISCORD_BOT_TOKEN')

@@ -1,1 +1,1 @@
-# This file is intentionally empty as we're using Discord.py's built-in help command
+# Using Discord.py's built-in help command
