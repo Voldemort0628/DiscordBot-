@@ -252,15 +252,16 @@ class ShopifyMonitor:
             total_products = len(products_data.get("products", []))
             logging.info(f"Retrieved {total_products} products from initial request")
 
+            lowercase_keywords = [kw.lower() for kw in keywords]
+
             # Process products in thread pool to avoid blocking
             def process_product_batch(products_batch):
                 results = []
                 for product in products_batch:
-                    if self._matches_keywords(product, keywords):
+                    if self._matches_keywords(product, lowercase_keywords):
                         processed = self._process_product(store_url, product)
                         if processed:
                             results.append(processed)
-                            logging.info(f"Found matching product: {product.get('title', 'Unknown')}")
                 return results
 
             # Split products into batches for parallel processing
@@ -298,10 +299,9 @@ class ShopifyMonitor:
 
     def _matches_keywords(self, product: Dict, keywords: List[str]) -> bool:
         """
-        Enhanced keyword matching that requires ALL keywords to match.
-        Supports exact phrase matching and handles both single-word and multi-word keywords.
+        Enhanced keyword matching with stricter rules and exact phrase matching
         """
-        if not product or not keywords:
+        if not product:
             return False
 
         # Convert product fields to lowercase for case-insensitive matching
@@ -313,46 +313,31 @@ class ShopifyMonitor:
         # Combine all searchable text
         searchable_text = f"{title} {vendor} {product_type} {' '.join(tags)}"
 
-        logging.debug(f"Matching text: {searchable_text}")
-        logging.debug(f"Against keywords: {keywords}")
-
-        # Convert keywords to lowercase for consistent matching
         lowercase_keywords = [kw.lower() for kw in keywords]
 
-        # Each keyword must match for the product to be included
+        # For exact phrase matching (e.g., "Air Jordan 1")
         for keyword in lowercase_keywords:
-            keyword_matched = False
-
-            # Split multi-word keywords for exact phrase matching
+            # Split multi-word keywords for more accurate matching
             keyword_parts = keyword.split()
-
             if len(keyword_parts) > 1:
-                # For multi-word keywords, require all parts in sequence
+                # For multi-word keywords, all parts must be present in order
+                found_all = True
                 current_pos = 0
-                all_parts_found = True
-
                 for part in keyword_parts:
                     pos = searchable_text.find(part, current_pos)
                     if pos == -1:
-                        all_parts_found = False
+                        found_all = False
                         break
                     current_pos = pos + len(part)
-
-                keyword_matched = all_parts_found
+                if found_all:
+                    return True
             else:
                 # For single-word keywords, require word boundary match
                 word_pattern = f"\\b{re.escape(keyword)}\\b"
-                keyword_matched = bool(re.search(word_pattern, searchable_text))
+                if re.search(word_pattern, searchable_text):
+                    return True
 
-            logging.debug(f"Keyword '{keyword}' matched: {keyword_matched}")
-
-            # If any keyword doesn't match, return False (AND condition)
-            if not keyword_matched:
-                return False
-
-        # All keywords matched
-        logging.debug("All keywords matched successfully")
-        return True
+        return False
 
     def _process_fallback_content(self, content: str, keywords: List[str]) -> Dict:
         products = {"products": []}

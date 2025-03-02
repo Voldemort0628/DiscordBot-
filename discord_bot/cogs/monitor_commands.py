@@ -31,7 +31,7 @@ def is_monitor_running(user_id):
 
                 is_monitor = ('python' in proc.info['name'] and 'main.py' in cmdline)
                 has_user_id = (str(user_id) == env.get('MONITOR_USER_ID', '') or
-                                 f"MONITOR_USER_ID={user_id}" in cmdline)
+                             f"MONITOR_USER_ID={user_id}" in cmdline)
 
                 if is_monitor and has_user_id:
                     try:
@@ -59,16 +59,12 @@ class MonitorCommands(commands.Cog):
                 await ctx.send(embed=embed)
         except discord.Forbidden:
             try:
-                await ctx.author.send(content if content else "I couldn't send a message in the channel. Please check my permissions.")
+                if content:
+                    await ctx.author.send(content)
                 if embed:
                     await ctx.author.send(embed=embed)
             except discord.Forbidden:
                 logging.error(f"Could not send message to user {ctx.author.id}")
-
-    @commands.Cog.listener()
-    async def on_command(self, ctx):
-        """Log when commands are used"""
-        logging.info(f"Command '{ctx.command.name}' was triggered by {ctx.author} (ID: {ctx.author.id})")
 
     @commands.command(name='verify')
     async def verify_user(self, ctx):
@@ -196,7 +192,7 @@ class MonitorCommands(commands.Cog):
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
 
-            # Get user information
+            # Get user_id and webhook URL
             cur.execute(
                 'SELECT id, discord_webhook_url FROM "user" WHERE discord_user_id = %s;',
                 (str(ctx.author.id),)
@@ -208,11 +204,6 @@ class MonitorCommands(commands.Cog):
 
             user_id, custom_webhook = result
 
-            # Check if monitor is already running
-            if is_monitor_running(user_id):
-                await self.safe_send(ctx, "Monitor is already running!")
-                return
-
             # Check if user has any stores configured
             cur.execute(
                 'SELECT COUNT(*) FROM store WHERE user_id = %s AND enabled = true;',
@@ -221,7 +212,12 @@ class MonitorCommands(commands.Cog):
             store_count = cur.fetchone()[0]
 
             if store_count == 0:
-                await self.safe_send(ctx, "❌ You need to add some stores first! Use `!preset_stores` to add our curated list of stores.")
+                await self.safe_send(ctx, "❌ You need to add some stores first! Use `!preset_stores` to add our curated list of stores, or `!add_store` to add your own.")
+                return
+
+            # Check if monitor is already running
+            if is_monitor_running(user_id):
+                await self.safe_send(ctx, "Monitor is already running!")
                 return
 
             # Use custom webhook if set, otherwise use preset webhook
@@ -234,39 +230,31 @@ class MonitorCommands(commands.Cog):
             )
             conn.commit()
 
-            # Start the monitor
-            workflow_name = f"Monitor-{user_id}"
-            from workflows_set_run_config_tool import workflows_set_run_config_tool
-
-            # Set environment variables for the monitor
-            env = {
-                "MONITOR_USER_ID": str(user_id),
-                "DISCORD_WEBHOOK_URL": webhook_url
-            }
-
-            logging.info(f"Starting monitor for user {user_id} with environment: {env}")
-
             # Start the monitor workflow
+            from workflows_set_run_config_tool import workflows_set_run_config_tool
+            workflow_name = f"Monitor-{user_id}"
             workflows_set_run_config_tool(
                 name=workflow_name,
-                command=f"python main.py MONITOR_USER_ID={user_id}",
-                environment=env
+                command=f"MONITOR_USER_ID={user_id} DISCORD_WEBHOOK_URL={webhook_url} python main.py",
             )
 
-            # Wait briefly for the monitor to start
-            await asyncio.sleep(3)  # Increased wait time
+            # Give the workflow a moment to start
+            await asyncio.sleep(2)
 
-            # Check if monitor started successfully
-            attempts = 3
-            while attempts > 0:
-                if is_monitor_running(user_id):
-                    webhook_type = "custom" if custom_webhook else "default"
-                    await self.safe_send(ctx, f"✅ Monitor started successfully! Using {webhook_type} webhook for {store_count} stores.")
-                    return
-                await asyncio.sleep(1)
-                attempts -= 1
-
-            await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
+            # Verify the monitor is running
+            if is_monitor_running(user_id):
+                logging.info(f"Starting monitor workflow for user {user_id} with webhook URL: {webhook_url}")
+                webhook_type = "custom" if custom_webhook else "default"
+                status_msg = [
+                    "✅ Monitor started successfully!",
+                    f"Using {webhook_type} webhook for notifications.",
+                    f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
+                    "Use !status to check monitor status.",
+                ]
+                await self.safe_send(ctx, "\n".join(status_msg))
+            else:
+                logging.error(f"Failed to start monitor for user {user_id}")
+                await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
 
         except Exception as e:
             logging.error(f"Error starting monitor: {e}")

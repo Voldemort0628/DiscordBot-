@@ -1,11 +1,27 @@
-import os
+import asyncio
 import sys
+import os
 import logging
 import logging.handlers
 from datetime import datetime
 from pathlib import Path
 
-# Configure logging first thing
+# Early environment check logging
+print("=== Monitor Starting ===")
+print(f"Environment variables:")
+print(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+print(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+print(f"Command line args: {sys.argv}")
+print("=====================")
+
+from typing import Dict, List, Set
+import time
+from shopify_monitor import ShopifyMonitor
+from discord_webhook import RateLimitedDiscordWebhook
+from models import db, User, Store, Keyword, MonitorConfig
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+
+# Configure logging with rotation
 log_dir = Path('logs')
 log_dir.mkdir(exist_ok=True)
 
@@ -28,33 +44,13 @@ logging.root.addHandler(root_handler)
 logging.root.addHandler(console_handler)
 logging.root.setLevel(logging.INFO)
 
-# Early startup checks for critical environment variables
-def check_required_env():
-    missing_vars = []
-
-    monitor_user_id = os.environ.get('MONITOR_USER_ID')
-    if not monitor_user_id:
-        missing_vars.append('MONITOR_USER_ID')
-
-    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
-    if not webhook_url:
-        missing_vars.append('DISCORD_WEBHOOK_URL')
-
-    if missing_vars:
-        logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        logging.error("Current environment:")
-        for key in ['MONITOR_USER_ID', 'DISCORD_WEBHOOK_URL']:
-            logging.error(f"{key}: {'Set' if os.environ.get(key) else 'Not set'}")
-        logging.error(f"Command line args: {sys.argv}")
-        sys.exit(1)
-
-    try:
-        int(monitor_user_id)  # Validate MONITOR_USER_ID is a valid integer
-    except ValueError:
-        logging.error(f"MONITOR_USER_ID must be a valid integer, got: {monitor_user_id}")
-        sys.exit(1)
-
-    return True
+# Add a separate logger for heartbeat
+heartbeat_logger = logging.getLogger('heartbeat')
+heartbeat_handler = logging.FileHandler(log_dir / 'heartbeat.log')
+heartbeat_formatter = logging.Formatter('%(asctime)s - %(message)s')
+heartbeat_handler.setFormatter(heartbeat_formatter)
+heartbeat_logger.addHandler(heartbeat_handler)
+heartbeat_logger.setLevel(logging.INFO)
 
 # Log startup information
 logging.info("=== Monitor Starting ===")
@@ -63,26 +59,6 @@ logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
 logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
 logging.info(f"Command line args: {sys.argv}")
 logging.info("=====================")
-
-# Run environment check before anything else
-check_required_env()
-
-# Now import the rest of the dependencies
-import asyncio
-from typing import Dict, List, Set
-import time
-from shopify_monitor import ShopifyMonitor
-from discord_webhook import RateLimitedDiscordWebhook
-from models import db, User, Store, Keyword, MonitorConfig
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
-
-# Add a separate logger for heartbeat
-heartbeat_logger = logging.getLogger('heartbeat')
-heartbeat_handler = logging.FileHandler(log_dir / 'heartbeat.log')
-heartbeat_formatter = logging.Formatter('%(asctime)s - %(message)s')
-heartbeat_handler.setFormatter(heartbeat_formatter)
-heartbeat_logger.addHandler(heartbeat_handler)
-heartbeat_logger.setLevel(logging.INFO)
 
 # Add a logger for DNS resolution
 dns_logger = logging.getLogger('dns')
