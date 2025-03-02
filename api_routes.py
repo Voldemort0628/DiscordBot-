@@ -1,12 +1,19 @@
+import os
 from flask import Blueprint, jsonify, request
 from models import db, User, Keyword
 from flask_login import current_user
 import logging
 import hmac
 import hashlib
-import os
+import secrets
 
 api = Blueprint('api', __name__)
+
+# Generate a secure API key if not already set
+if not os.getenv('MONITOR_API_KEY'):
+    api_key = secrets.token_urlsafe(32)
+    os.environ['MONITOR_API_KEY'] = api_key
+    print(f"Generated new MONITOR_API_KEY: {api_key}")
 
 def verify_bot_request():
     """Verify that the request is coming from our Discord bot"""
@@ -27,11 +34,11 @@ def get_status():
         user_id = request.args.get('user_id', type=int)
         if not user_id:
             return jsonify({'error': 'User ID required'}), 400
-            
+
         user = User.query.get(user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-            
+
         return jsonify({
             'running': user.enabled,
             'user_id': user.id
@@ -46,11 +53,11 @@ def start_monitor():
         user_id = request.json.get('user_id')
         if not user_id:
             return jsonify({'error': 'User ID required'}), 400
-            
+
         user = User.query.get(user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-            
+
         user.enabled = True
         db.session.commit()
         return jsonify({'message': 'Monitor started'})
@@ -64,11 +71,11 @@ def stop_monitor():
         user_id = request.json.get('user_id')
         if not user_id:
             return jsonify({'error': 'User ID required'}), 400
-            
+
         user = User.query.get(user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-            
+
         user.enabled = False
         db.session.commit()
         return jsonify({'message': 'Monitor stopped'})
@@ -82,7 +89,7 @@ def get_keywords():
         user_id = request.args.get('user_id', type=int)
         if not user_id:
             return jsonify({'error': 'User ID required'}), 400
-            
+
         keywords = Keyword.query.filter_by(user_id=user_id).all()
         return jsonify({
             'keywords': [
@@ -99,10 +106,10 @@ def add_keyword():
     try:
         user_id = request.json.get('user_id')
         word = request.json.get('word')
-        
+
         if not user_id or not word:
             return jsonify({'error': 'User ID and keyword required'}), 400
-            
+
         keyword = Keyword(word=word, user_id=user_id, enabled=True)
         db.session.add(keyword)
         db.session.commit()
@@ -116,10 +123,10 @@ def remove_keyword():
     try:
         user_id = request.json.get('user_id')
         word = request.json.get('word')
-        
+
         if not user_id or not word:
             return jsonify({'error': 'User ID and keyword required'}), 400
-            
+
         keyword = Keyword.query.filter_by(user_id=user_id, word=word).first()
         if keyword:
             db.session.delete(keyword)

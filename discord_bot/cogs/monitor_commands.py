@@ -7,13 +7,16 @@ from typing import Optional
 class MonitorCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        
+
     @commands.command(name='status')
     async def status(self, ctx):
         """Check the status of your monitor"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.bot.api_base_url}/status") as resp:
+                async with session.get(
+                    f"{self.bot.api_base_url}/status",
+                    headers={'X-API-Key': self.bot.api_key}
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         embed = discord.Embed(
@@ -33,7 +36,10 @@ class MonitorCommands(commands.Cog):
         """Start your monitor"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.bot.api_base_url}/start") as resp:
+                async with session.post(
+                    f"{self.bot.api_base_url}/start",
+                    headers={'X-API-Key': self.bot.api_key}
+                ) as resp:
                     if resp.status == 200:
                         await ctx.send("Monitor started successfully!")
                     else:
@@ -47,7 +53,10 @@ class MonitorCommands(commands.Cog):
         """Stop your monitor"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.bot.api_base_url}/stop") as resp:
+                async with session.post(
+                    f"{self.bot.api_base_url}/stop",
+                    headers={'X-API-Key': self.bot.api_key}
+                ) as resp:
                     if resp.status == 200:
                         await ctx.send("Monitor stopped successfully!")
                     else:
@@ -61,7 +70,10 @@ class MonitorCommands(commands.Cog):
         """List your current keywords"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.bot.api_base_url}/keywords") as resp:
+                async with session.get(
+                    f"{self.bot.api_base_url}/keywords",
+                    headers={'X-API-Key': self.bot.api_key}
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         embed = discord.Embed(
@@ -88,6 +100,7 @@ class MonitorCommands(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.bot.api_base_url}/keywords",
+                    headers={'X-API-Key': self.bot.api_key},
                     json={'word': keyword}
                 ) as resp:
                     if resp.status == 200:
@@ -105,6 +118,7 @@ class MonitorCommands(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.delete(
                     f"{self.bot.api_base_url}/keywords",
+                    headers={'X-API-Key': self.bot.api_key},
                     json={'word': keyword}
                 ) as resp:
                     if resp.status == 200:
