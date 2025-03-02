@@ -704,3 +704,127 @@ Monitor started with PID: 27543
 2025-03-02 15:25:42,975 - INFO - 2025-03-02 15:25:42,939 - INFO - Successfully notified about product: RINGS TEE
 2025-03-02 15:25:43,079 - INFO - 2025-03-02 15:25:42,972 - INFO - [User 12] New product/restock found on https://www.apbstore.com: FLIGHT HOODIE
 2025-03-02 15:25:45,343 - INFO - 2025-03-02 15:25:45,342 - INFO - Successfully notified about product: FLIGHT HOODIE
+2025-03-02 16:30:27,412 - INFO - 2025-03-02 15:12:47,466 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "BLACK/ VIVID PURPLE"
+2025-03-02 16:30:27,420 - INFO - 2025-03-02 15:19:10,592 - INFO - [User 12] New product/restock found on https://www.apbstore.com: INITIATOR "BLACK/ METALLIC SILVER"
+2025-03-02 16:30:27,428 - INFO - 2025-03-02 15:25:45,342 - INFO - [User 12] New product/restock found on https://www.apbstore.com: FLIGHT OVERSIZE TEE
+2025-03-02 16:30:27,512 - INFO - 2025-03-02 15:12:50,234 - INFO - Successfully notified about product: ZOOM VOMERO 5 "BLACK/ VIVID PURPLE"
+2025-03-02 16:30:27,520 - INFO - 2025-03-02 15:19:13,024 - INFO - Successfully notified about product: INITIATOR "BLACK/ METALLIC SILVER"
+2025-03-02 16:30:27,531 - INFO - 2025-03-02 15:25:47,835 - INFO - Successfully notified about product: FLIGHT OVERSIZE TEE
+2025-03-02 16:30:27,613 - INFO - 2025-03-02 15:12:50,234 - INFO - [User 12] New product/restock found on https://www.apbstore.com: WOMEN'S NIKE INITIATOR "VAST GREY/PINK FOAM"
+2025-03-02 16:30:27,620 - INFO - 2025-03-02 15:19:13,024 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "BLACK/ VIVID PURPLE"
+2025-03-02 16:30:27,632 - INFO - 2025-03-02 15:25:47,836 - INFO - [User 12] New product/restock found on https://www.apbstore.com: INITIATOR "BLACK/ METALLIC SILVER"
+2025-03-02 16:30:27,715 - INFO - 2025-03-02 15:12:53,064 - INFO - Successfully notified about product: WOMEN'S NIKE INITIATOR "VAST GREY/PINK FOAM"
+2025-03-02 16:30:27,721 - INFO - 2025-03-02 15:19:15,409 - INFO - Successfully notified about product: ZOOM VOMERO 5 "BLACK/ VIVID PURPLE"
+2025-03-02 16:30:27,732 - INFO - 2025-03-02 15:25:50,337 - INFO - Successfully notified about product: INITIATOR "BLACK/ METALLIC SILVER"
+2025-03-02 16:30:27,815 - INFO - 2025-03-02 15:12:53,064 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR PEGASUS WAVE "SUNDIAL/ UNIVERSITY BLUE/ BRIGHT CERAMIC"
+2025-03-02 16:30:27,821 - INFO - 2025-03-02 15:19:15,410 - INFO - [User 12] New product/restock found on https://www.apbstore.com: WOMEN'S NIKE INITIATOR "VAST GREY/PINK FOAM"
+2025-03-02 16:30:27,832 - INFO - 2025-03-02 15:25:50,337 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "BLACK/ VIVID PURPLE"
+2025-03-02 16:30:27,917 - INFO - 2025-03-02 15:12:55,797 - INFO - Successfully notified about product: AIR PEGASUS WAVE "SUNDIAL/ UNIVERSITY BLUE/ BRIGHT CERAMIC"
+2025-03-02 16:30:27,921 - INFO - 2025-03-02 15:19:17,755 - INFO - Successfully notified about product: WOMEN'S NIKE INITIATOR "VAST GREY/PINK FOAM"
+2025-03-02 16:30:27,933 - INFO - 2025-03-02 15:25:52,662 - INFO - Successfully notified about product: ZOOM VOMERO 5 "BLACK/ VIVID PURPLE"
+2025-03-02 16:30:28,017 - INFO - 2025-03-02 15:12:55,798 - INFO - [User 12] New product/restock found on https://www.apbstore.com: BOOK 1 "FIR/PHANTOM"
+2025-03-02 16:30:28,022 - INFO - 2025-03-02 15:19:17,756 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR PEGASUS WAVE "SUNDIAL/ UNIVERSITY BLUE/ BRIGHT CERAMIC"
+2025-03-02 16:30:28,033 - INFO - 2025-03-02 15:25:52,662 - INFO - [User 12] New product/restock found on https://www.apbstore.com: WOMEN'S NIKE INITIATOR "VAST GREY/PINK FOAM"
+2025-03-02 16:30:28,117 - INFO - 2025-03-02 15:12:58,595 - INFO - Successfully notified about product: BOOK 1 "FIR/PHANTOM"
+2025-03-02 16:30:28,122 - INFO - 2025-03-02 15:19:20,119 - INFO - Successfully notified about product: AIR PEGASUS WAVE "SUNDIAL/ UNIVERSITY BLUE/ BRIGHT CERAMIC"
+2025-03-02 16:30:28,133 - INFO - 2025-03-02 15:25:54,989 - INFO - Successfully notified about product: WOMEN'S NIKE INITIATOR "VAST GREY/PINK FOAM"
+2025-03-02 16:30:28,218 - INFO - 2025-03-02 15:12:58,595 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR TECH CHALLENGE 2 "WHITE/RACER PINK/ LIGHT SMOKE GREY"
+2025-03-02 16:30:28,222 - INFO - 2025-03-02 15:19:20,120 - INFO - [User 12] New product/restock found on https://www.apbstore.com: BOOK 1 "FIR/PHANTOM"
+2025-03-02 16:30:28,234 - INFO - 2025-03-02 15:25:54,989 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR PEGASUS WAVE "SUNDIAL/ UNIVERSITY BLUE/ BRIGHT CERAMIC"
+2025-03-02 16:30:28,318 - INFO - 2025-03-02 15:13:01,302 - INFO - Successfully notified about product: AIR TECH CHALLENGE 2 "WHITE/RACER PINK/ LIGHT SMOKE GREY"
+2025-03-02 16:30:28,322 - INFO - 2025-03-02 15:19:22,493 - INFO - Successfully notified about product: BOOK 1 "FIR/PHANTOM"
+2025-03-02 16:30:28,334 - INFO - 2025-03-02 15:25:57,390 - INFO - Successfully notified about product: AIR PEGASUS WAVE "SUNDIAL/ UNIVERSITY BLUE/ BRIGHT CERAMIC"
+2025-03-02 16:30:28,418 - INFO - 2025-03-02 15:13:01,303 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR 180 "BLUE/ HYPER PINK"
+2025-03-02 16:30:28,423 - INFO - 2025-03-02 15:19:22,493 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR TECH CHALLENGE 2 "WHITE/RACER PINK/ LIGHT SMOKE GREY"
+2025-03-02 16:30:28,434 - INFO - 2025-03-02 15:25:57,390 - INFO - [User 12] New product/restock found on https://www.apbstore.com: BOOK 1 "FIR/PHANTOM"
+2025-03-02 16:30:28,519 - INFO - 2025-03-02 15:13:04,079 - INFO - Successfully notified about product: AIR 180 "BLUE/ HYPER PINK"
+2025-03-02 16:30:28,523 - INFO - 2025-03-02 15:19:25,054 - INFO - Successfully notified about product: AIR TECH CHALLENGE 2 "WHITE/RACER PINK/ LIGHT SMOKE GREY"
+2025-03-02 16:30:28,535 - INFO - 2025-03-02 15:25:59,877 - INFO - Successfully notified about product: BOOK 1 "FIR/PHANTOM"
+2025-03-02 16:30:28,619 - INFO - 2025-03-02 15:13:04,079 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR DIAMOND TURF "FIRE RED/METALLIC GOLD"
+2025-03-02 16:30:28,623 - INFO - 2025-03-02 15:19:25,054 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR 180 "BLUE/ HYPER PINK"
+2025-03-02 16:30:28,635 - INFO - 2025-03-02 15:25:59,877 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR TECH CHALLENGE 2 "WHITE/RACER PINK/ LIGHT SMOKE GREY"
+2025-03-02 16:30:28,719 - INFO - 2025-03-02 15:13:06,772 - INFO - Successfully notified about product: AIR DIAMOND TURF "FIRE RED/METALLIC GOLD"
+2025-03-02 16:30:28,724 - INFO - 2025-03-02 15:19:27,523 - INFO - Successfully notified about product: AIR 180 "BLUE/ HYPER PINK"
+2025-03-02 16:30:28,736 - INFO - 2025-03-02 15:26:02,411 - INFO - Successfully notified about product: AIR TECH CHALLENGE 2 "WHITE/RACER PINK/ LIGHT SMOKE GREY"
+2025-03-02 16:30:28,819 - INFO - 2025-03-02 15:13:06,773 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR ZOOM SPIRIDON "BLACK/METALLIC SILVER"
+2025-03-02 16:30:28,824 - INFO - 2025-03-02 15:19:27,524 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR DIAMOND TURF "FIRE RED/METALLIC GOLD"
+2025-03-02 16:30:28,836 - INFO - 2025-03-02 15:26:02,412 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR 180 "BLUE/ HYPER PINK"
+2025-03-02 16:30:28,920 - INFO - 2025-03-02 15:13:09,329 - INFO - Successfully notified about product: AIR ZOOM SPIRIDON "BLACK/METALLIC SILVER"
+2025-03-02 16:30:28,925 - INFO - 2025-03-02 15:19:30,029 - INFO - Successfully notified about product: AIR DIAMOND TURF "FIRE RED/METALLIC GOLD"
+2025-03-02 16:30:28,936 - INFO - 2025-03-02 15:26:04,833 - INFO - Successfully notified about product: AIR 180 "BLUE/ HYPER PINK"
+2025-03-02 16:30:29,020 - INFO - 2025-03-02 15:13:09,330 - INFO - [User 12] New product/restock found on https://www.apbstore.com: WOMEN'S AIR JORDAN 5 "EARTH"
+2025-03-02 16:30:29,026 - INFO - 2025-03-02 15:19:30,029 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR ZOOM SPIRIDON "BLACK/METALLIC SILVER"
+2025-03-02 16:30:29,037 - INFO - 2025-03-02 15:26:04,833 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR DIAMOND TURF "FIRE RED/METALLIC GOLD"
+2025-03-02 16:30:29,120 - INFO - 2025-03-02 15:13:12,008 - INFO - Successfully notified about product: WOMEN'S AIR JORDAN 5 "EARTH"
+2025-03-02 16:30:29,126 - INFO - 2025-03-02 15:19:32,509 - INFO - Successfully notified about product: AIR ZOOM SPIRIDON "BLACK/METALLIC SILVER"
+2025-03-02 16:30:29,137 - INFO - 2025-03-02 15:26:07,302 - INFO - Successfully notified about product: AIR DIAMOND TURF "FIRE RED/METALLIC GOLD"
+2025-03-02 16:30:29,221 - INFO - 2025-03-02 15:13:12,008 - INFO - [User 12] New product/restock found on https://www.apbstore.com: CLUB CAP
+2025-03-02 16:30:29,227 - INFO - 2025-03-02 15:19:32,509 - INFO - [User 12] New product/restock found on https://www.apbstore.com: WOMEN'S AIR JORDAN 5 "EARTH"
+2025-03-02 16:30:29,237 - INFO - 2025-03-02 15:26:07,302 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR ZOOM SPIRIDON "BLACK/METALLIC SILVER"
+2025-03-02 16:30:29,321 - INFO - 2025-03-02 15:13:14,680 - INFO - Successfully notified about product: CLUB CAP
+2025-03-02 16:30:29,327 - INFO - 2025-03-02 15:19:34,943 - INFO - Successfully notified about product: WOMEN'S AIR JORDAN 5 "EARTH"
+2025-03-02 16:30:29,338 - INFO - 2025-03-02 15:26:09,796 - INFO - Successfully notified about product: AIR ZOOM SPIRIDON "BLACK/METALLIC SILVER"
+2025-03-02 16:30:29,421 - INFO - 2025-03-02 15:13:14,681 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR PEGASUS 2005
+2025-03-02 16:30:29,427 - INFO - 2025-03-02 15:19:34,943 - INFO - [User 12] New product/restock found on https://www.apbstore.com: CLUB CAP
+2025-03-02 16:30:29,438 - INFO - 2025-03-02 15:26:09,796 - INFO - [User 12] New product/restock found on https://www.apbstore.com: WOMEN'S AIR JORDAN 5 "EARTH"
+2025-03-02 16:30:29,522 - INFO - 2025-03-02 15:13:17,413 - INFO - Successfully notified about product: AIR PEGASUS 2005
+2025-03-02 16:30:29,528 - INFO - 2025-03-02 15:19:37,377 - INFO - Successfully notified about product: CLUB CAP
+2025-03-02 16:30:29,538 - INFO - 2025-03-02 15:26:12,202 - INFO - Successfully notified about product: WOMEN'S AIR JORDAN 5 "EARTH"
+2025-03-02 16:30:29,622 - INFO - 2025-03-02 15:13:17,413 - INFO - [User 12] New product/restock found on https://www.apbstore.com: SHOX R4 "IRIDESCENT"
+2025-03-02 16:30:29,628 - INFO - 2025-03-02 15:19:37,378 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR PEGASUS 2005
+2025-03-02 16:30:29,639 - INFO - 2025-03-02 15:26:12,202 - INFO - [User 12] New product/restock found on https://www.apbstore.com: CLUB CAP
+2025-03-02 16:30:29,722 - INFO - 2025-03-02 15:13:20,033 - INFO - Successfully notified about product: SHOX R4 "IRIDESCENT"
+2025-03-02 16:30:29,728 - INFO - 2025-03-02 15:19:39,791 - INFO - Successfully notified about product: AIR PEGASUS 2005
+2025-03-02 16:30:29,739 - INFO - 2025-03-02 15:26:14,810 - INFO - Successfully notified about product: CLUB CAP
+2025-03-02 16:30:29,823 - INFO - 2025-03-02 15:13:20,034 - INFO - [User 12] New product/restock found on https://www.apbstore.com: RIOT SB DUNK LOW PRO "DARK BEETROOT"
+2025-03-02 16:30:29,829 - INFO - 2025-03-02 15:19:39,792 - INFO - [User 12] New product/restock found on https://www.apbstore.com: SHOX R4 "IRIDESCENT"
+2025-03-02 16:30:29,839 - INFO - 2025-03-02 15:26:14,810 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR PEGASUS 2005
+2025-03-02 16:30:29,923 - INFO - 2025-03-02 15:13:22,710 - INFO - Successfully notified about product: RIOT SB DUNK LOW PRO "DARK BEETROOT"
+2025-03-02 16:30:29,929 - INFO - 2025-03-02 15:19:42,170 - INFO - Successfully notified about product: SHOX R4 "IRIDESCENT"
+2025-03-02 16:30:29,940 - INFO - 2025-03-02 15:26:17,343 - INFO - Successfully notified about product: AIR PEGASUS 2005
+2025-03-02 16:30:30,023 - INFO - 2025-03-02 15:13:22,710 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "BRIGHT CRIMSON/ METALLIC SILVER"
+2025-03-02 16:30:30,029 - INFO - 2025-03-02 15:19:42,170 - INFO - [User 12] New product/restock found on https://www.apbstore.com: RIOT SB DUNK LOW PRO "DARK BEETROOT"
+2025-03-02 16:30:30,040 - INFO - 2025-03-02 15:26:17,343 - INFO - [User 12] New product/restock found on https://www.apbstore.com: SHOX R4 "IRIDESCENT"
+2025-03-02 16:30:30,124 - INFO - 2025-03-02 15:13:25,314 - INFO - Successfully notified about product: ZOOM VOMERO 5 "BRIGHT CRIMSON/ METALLIC SILVER"
+2025-03-02 16:30:30,129 - INFO - 2025-03-02 15:19:44,697 - INFO - Successfully notified about product: RIOT SB DUNK LOW PRO "DARK BEETROOT"
+2025-03-02 16:30:30,140 - INFO - 2025-03-02 15:26:19,689 - INFO - Successfully notified about product: SHOX R4 "IRIDESCENT"
+2025-03-02 16:30:30,224 - INFO - 2025-03-02 15:13:25,314 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "PHANTOM/ KHAKI/ LIGHT OREWOOD BROWN"
+2025-03-02 16:30:30,230 - INFO - 2025-03-02 15:19:44,698 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "BRIGHT CRIMSON/ METALLIC SILVER"
+2025-03-02 16:30:30,241 - INFO - 2025-03-02 15:26:19,690 - INFO - [User 12] New product/restock found on https://www.apbstore.com: RIOT SB DUNK LOW PRO "DARK BEETROOT"
+2025-03-02 16:30:30,325 - INFO - 2025-03-02 15:13:27,898 - INFO - Successfully notified about product: ZOOM VOMERO 5 "PHANTOM/ KHAKI/ LIGHT OREWOOD BROWN"
+2025-03-02 16:30:30,330 - INFO - 2025-03-02 15:19:47,101 - INFO - Successfully notified about product: ZOOM VOMERO 5 "BRIGHT CRIMSON/ METALLIC SILVER"
+2025-03-02 16:30:30,341 - INFO - 2025-03-02 15:26:22,124 - INFO - Successfully notified about product: RIOT SB DUNK LOW PRO "DARK BEETROOT"
+2025-03-02 16:30:30,425 - INFO - 2025-03-02 15:13:27,898 - INFO - [User 12] New product/restock found on https://www.apbstore.com: DUNK LOW "BLUE DENIM"
+2025-03-02 16:30:30,430 - INFO - 2025-03-02 15:19:47,101 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "PHANTOM/ KHAKI/ LIGHT OREWOOD BROWN"
+2025-03-02 16:30:30,441 - INFO - 2025-03-02 15:26:22,124 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "BRIGHT CRIMSON/ METALLIC SILVER"
+2025-03-02 16:30:30,525 - INFO - 2025-03-02 15:13:30,500 - INFO - Successfully notified about product: DUNK LOW "BLUE DENIM"
+2025-03-02 16:30:30,530 - INFO - 2025-03-02 15:19:49,599 - INFO - Successfully notified about product: ZOOM VOMERO 5 "PHANTOM/ KHAKI/ LIGHT OREWOOD BROWN"
+2025-03-02 16:30:30,541 - INFO - 2025-03-02 15:26:24,659 - INFO - Successfully notified about product: ZOOM VOMERO 5 "BRIGHT CRIMSON/ METALLIC SILVER"
+2025-03-02 16:30:30,626 - INFO - 2025-03-02 15:13:30,500 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "BLACK CAT" TD
+2025-03-02 16:30:30,631 - INFO - 2025-03-02 15:19:49,599 - INFO - [User 12] New product/restock found on https://www.apbstore.com: DUNK LOW "BLUE DENIM"
+2025-03-02 16:30:30,642 - INFO - 2025-03-02 15:26:24,659 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM VOMERO 5 "PHANTOM/ KHAKI/ LIGHT OREWOOD BROWN"
+2025-03-02 16:30:30,726 - INFO - 2025-03-02 15:13:33,581 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "BLACK CAT" TD
+2025-03-02 16:30:30,731 - INFO - 2025-03-02 15:19:52,009 - INFO - Successfully notified about product: DUNK LOW "BLUE DENIM"
+2025-03-02 16:30:30,742 - INFO - 2025-03-02 15:26:27,121 - INFO - Successfully notified about product: ZOOM VOMERO 5 "PHANTOM/ KHAKI/ LIGHT OREWOOD BROWN"
+2025-03-02 16:30:30,826 - INFO - 2025-03-02 15:13:33,581 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "BLACK CAT" GS
+2025-03-02 16:30:30,831 - INFO - 2025-03-02 15:19:52,009 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "BLACK CAT" TD
+2025-03-02 16:30:30,843 - INFO - 2025-03-02 15:26:27,121 - INFO - [User 12] New product/restock found on https://www.apbstore.com: DUNK LOW "BLUE DENIM"
+2025-03-02 16:30:30,926 - INFO - 2025-03-02 15:13:36,379 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "BLACK CAT" GS
+2025-03-02 16:30:30,933 - INFO - 2025-03-02 15:19:54,627 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "BLACK CAT" TD
+2025-03-02 16:30:30,943 - INFO - 2025-03-02 15:26:29,654 - INFO - Successfully notified about product: DUNK LOW "BLUE DENIM"
+2025-03-02 16:30:31,027 - INFO - 2025-03-02 15:13:36,379 - INFO - [User 12] New product/restock found on https://www.apbstore.com: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD" GS
+2025-03-02 16:30:31,033 - INFO - 2025-03-02 15:19:54,627 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "BLACK CAT" GS
+2025-03-02 16:30:31,043 - INFO - 2025-03-02 15:26:29,654 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "BLACK CAT" TD
+2025-03-02 16:30:31,127 - INFO - 2025-03-02 15:13:39,183 - INFO - Successfully notified about product: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD" GS
+2025-03-02 16:30:31,133 - INFO - 2025-03-02 15:19:57,201 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "BLACK CAT" GS
+2025-03-02 16:30:31,144 - INFO - 2025-03-02 15:26:32,113 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "BLACK CAT" TD
+2025-03-02 16:30:31,228 - INFO - 2025-03-02 15:13:39,184 - INFO - [User 12] New product/restock found on https://www.apbstore.com: SB ZOOM JANOSKI OG "BLACK/UNIVERSITY RED/BLACK/SUMMIT WHITE"
+2025-03-02 16:30:31,233 - INFO - 2025-03-02 15:19:57,201 - INFO - [User 12] New product/restock found on https://www.apbstore.com: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD" GS
+2025-03-02 16:30:31,244 - INFO - 2025-03-02 15:26:32,113 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "BLACK CAT" GS
+2025-03-02 16:30:31,328 - INFO - 2025-03-02 15:13:41,810 - INFO - Successfully notified about product: SB ZOOM JANOSKI OG "BLACK/UNIVERSITY RED/BLACK/SUMMIT WHITE"
+2025-03-02 16:30:31,334 - INFO - 2025-03-02 15:19:59,695 - INFO - Successfully notified about product: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD" GS
+2025-03-02 16:30:31,344 - INFO - 2025-03-02 15:26:34,522 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "BLACK CAT" GS
+2025-03-02 16:30:31,428 - INFO - 2025-03-02 15:13:41,810 - INFO - [User 12] New product/restock found on https://www.apbstore.com: INITIATOR "OBSIDIAN/METALLIC SILVER/GOLD"
+2025-03-02 16:30:31,434 - INFO - 2025-03-02 15:19:59,695 - INFO - [User 12] New product/restock found on https://www.apbstore.com: SB ZOOM JANOSKI OG "BLACK/UNIVERSITY RED/BLACK/SUMMIT WHITE"
+2025-03-02 16:30:31,445 - INFO - 2025-03-02 15:26:34,522 - INFO - [User 12] New product/restock found on https://www.apbstore.com: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD" GS
+2025-03-02 16:30:31,545 - INFO - 2025-03-02 15:26:36,988 - INFO - Successfully notified about product: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD" GS
