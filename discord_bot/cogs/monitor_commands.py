@@ -32,7 +32,7 @@ class MonitorCommands(commands.Cog):
                         embed.add_field(name="User", value=data['username'])
                         await ctx.send(embed=embed)
                     elif resp.status == 404:
-                        await ctx.send("❌ Error: Your Discord account is not registered with the monitor. Use `!link <username> <password>` to link your account.")
+                        await ctx.send("❌ Error: Your Discord account is not registered with the monitor. Use `!link` to link your account.")
                     else:
                         error_data = await resp.json()
                         await ctx.send(f"❌ Error checking monitor status: {error_data.get('error', 'Unknown error')}")
@@ -142,33 +142,23 @@ class MonitorCommands(commands.Cog):
             await ctx.send("Error removing keyword")
 
     @commands.command(name='link')
-    async def link_account(self, ctx, username: str, password: str):
+    async def link_account(self, ctx):
         """Link your Discord account with your monitor account"""
         try:
-            # Delete the message to hide the password
-            await ctx.message.delete()
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.bot.api_base_url}/link_discord",
-                    headers={'X-API-Key': self.bot.api_key},
-                    json={
-                        'username': username,
-                        'password': password,
-                        'discord_user_id': str(ctx.author.id)
-                    }
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        await ctx.send(f"✅ Successfully linked your Discord account with monitor user: {data['username']}")
-                    elif resp.status == 401:
-                        await ctx.send("❌ Invalid username or password")
-                    else:
-                        error_data = await resp.json()
-                        await ctx.send(f"❌ Error linking account: {error_data.get('error', 'Unknown error')}")
+            login_url = f"{self.bot.api_base_url.replace('/api', '')}/discord-login"
+            embed = discord.Embed(
+                title="Link Your Discord Account",
+                description=(
+                    "Click the link below to connect your Discord account with the monitor:\n"
+                    f"🔗 [Login with Discord]({login_url})"
+                ),
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text="This link will securely connect your Discord account")
+            await ctx.send(embed=embed)
         except Exception as e:
-            logging.error(f"Error linking account: {e}")
-            await ctx.send("❌ Error linking account. Please try again later.")
+            logging.error(f"Error providing login link: {e}")
+            await ctx.send("❌ Error generating login link. Please try again later.")
 
 
 async def setup(bot):

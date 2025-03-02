@@ -1,5 +1,7 @@
 import os
-from flask import Flask, render_template, redirect, url_for, flash, request
+import secrets
+import logging
+from flask import Flask, render_template, redirect, url_for, flash, request, session
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from models import db, User, Store, Keyword, MonitorConfig
 from forms import LoginForm, RegistrationForm, StoreForm, KeywordForm, ConfigForm, VariantScraperForm
@@ -8,6 +10,7 @@ import subprocess
 import psutil
 import time
 from api_routes import api # Import the api blueprint
+from requests_oauthlib import OAuth2Session
 
 
 def is_monitor_running(user_id):
@@ -25,9 +28,7 @@ def is_monitor_running(user_id):
 
 def create_app():
     app = Flask(__name__)
-
-    # Basic Configuration
-    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
+    app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -345,6 +346,68 @@ def create_app():
             print(f"Error in toggle_monitor: {e}")
             flash(f'Error toggling monitor: {str(e)}', 'error')
             return redirect(url_for('dashboard'))
+
+    # Discord OAuth2 configuration
+    app.config['DISCORD_CLIENT_ID'] = os.environ.get('DISCORD_CLIENT_ID')
+    app.config['DISCORD_CLIENT_SECRET'] = os.environ.get('DISCORD_CLIENT_SECRET')
+    app.config['DISCORD_REDIRECT_URI'] = os.environ.get('DISCORD_REDIRECT_URI', f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.co/oauth-callback')
+    app.config['DISCORD_BOT_TOKEN'] = os.environ.get('DISCORD_BOT_TOKEN')
+
+    DISCORD_AUTHORIZATION_BASE_URL = 'https://discord.com/api/oauth2/authorize'
+    DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token'
+
+    @app.route('/discord-login')
+    def discord_login():
+        discord = OAuth2Session(
+            app.config['DISCORD_CLIENT_ID'],
+            redirect_uri=app.config['DISCORD_REDIRECT_URI'],
+            scope=['identify']
+        )
+        authorization_url, state = discord.authorization_url(DISCORD_AUTHORIZATION_BASE_URL)
+        session['oauth2_state'] = state
+        return render_template('discord_login.html', auth_url=authorization_url)
+
+    @app.route('/oauth-callback')
+    def oauth_callback():
+        try:
+            discord = OAuth2Session(
+                app.config['DISCORD_CLIENT_ID'],
+                redirect_uri=app.config['DISCORD_REDIRECT_URI'],
+                state=session.get('oauth2_state')
+            )
+            token = discord.fetch_token(
+                DISCORD_TOKEN_URL,
+                client_secret=app.config['DISCORD_CLIENT_SECRET'],
+                authorization_response=request.url
+            )
+
+            # Get user info from Discord
+            discord_user = discord.get('https://discord.com/api/users/@me').json()
+            discord_user_id = discord_user['id']
+
+            # Find or create user
+            user = User.query.filter_by(discord_user_id=discord_user_id).first()
+            if not user:
+                # Create new user with Discord info
+                username = f"{discord_user['username']}#{discord_user['discriminator']}"
+                user = User(
+                    username=username,
+                    discord_user_id=discord_user_id,
+                    enabled=True
+                )
+                # Set a random password since we won't use it
+                user.set_password(secrets.token_urlsafe(32))
+                db.session.add(user)
+                db.session.commit()
+
+            login_user(user)
+            flash('Successfully logged in with Discord!')
+            return redirect(url_for('dashboard'))
+
+        except Exception as e:
+            logging.error(f"OAuth callback error: {e}")
+            flash('Failed to log in with Discord. Please try again.')
+            return redirect(url_for('discord_login'))
 
     # Register the API blueprint
     app.register_blueprint(api, url_prefix='/api')

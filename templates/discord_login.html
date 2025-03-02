@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h2 class="mb-4">Login with Discord</h2>
+            <p class="mb-4">Connect your Discord account to use the monitor</p>
+            <a href="{{ auth_url }}" class="btn btn-primary btn-lg">
+                <i class="fab fa-discord me-2"></i> Continue with Discord
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
