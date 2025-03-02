@@ -1,0 +1,22 @@
+2025-03-02 17:58:07,007 - INFO - Starting monitor for user ID: 12
+2025-03-02 17:58:07,007 - INFO - Logs will be saved to: monitor_log_12_2025-03-02_17-58-07.txt
+2025-03-02 17:58:07,008 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 17:58:07,008 - INFO - Starting monitor for user 12
+2025-03-02 17:58:07,008 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-02 17:58:07,008 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 17:58:07,008 - INFO - Created tracking file: monitor_process_12.json
+2025-03-02 17:58:07,009 - INFO - Started process with PID 875
+2025-03-02 17:58:07,010 - INFO - Updated tracking file with PID: 875
+2025-03-02 17:58:09,010 - INFO - 2025-03-02 17:58:08,339 - INFO - Got user ID from environment: 12
+2025-03-02 17:58:09,110 - INFO - 2025-03-02 17:58:08,341 - INFO - Starting monitor with configuration:
+2025-03-02 17:58:09,210 - INFO - 2025-03-02 17:58:08,342 - INFO - - User ID: 12
+2025-03-02 17:58:09,311 - INFO - 2025-03-02 17:58:08,342 - INFO - - Webhook URL configured: Yes
+2025-03-02 17:58:09,411 - INFO - 2025-03-02 17:58:08,342 - INFO - - Monitor uptime: 0.00 seconds
+2025-03-02 17:58:09,512 - INFO - 2025-03-02 17:58:08,516 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 17:58:09,612 - INFO - 2025-03-02 17:58:08,516 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 17:58:09,712 - INFO - 2025-03-02 17:58:08,525 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 17:58:09,813 - INFO - 2025-03-02 17:58:08,526 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 17:58:09,913 - INFO - 2025-03-02 17:58:08,792 - INFO - Monitor heartbeat - User 12 - Active and running
+2025-03-02 17:58:11,796 - INFO - 2025-03-02 17:58:11,796 - ERROR - User 12 not found or disabled
+2025-03-02 17:58:12,067 - INFO - Monitor process ended
+2025-03-02 17:58:12,067 - INFO - Removed tracking file: monitor_process_12.json

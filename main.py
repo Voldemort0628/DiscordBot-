@@ -12,6 +12,8 @@ logging.info(f"Environment variables:")
 logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
 logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
 logging.info(f"Command line args: {sys.argv}")
+logging.info(f"Current working directory: {os.getcwd()}")
+logging.info(f"Python path: {sys.path}")
 logging.info("=====================")
 
 if not os.environ.get('MONITOR_USER_ID'):
@@ -22,12 +24,25 @@ if not os.environ.get('MONITOR_USER_ID'):
     logging.error(f"Command line args: {sys.argv}")
     sys.exit(1)
 
-from typing import Dict, List, Set
-import time
-from shopify_monitor import ShopifyMonitor
-from discord_webhook import RateLimitedDiscordWebhook
-from models import db, User, Store, Keyword, MonitorConfig
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
+# Add the current directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+    logging.info(f"Added current directory to Python path: {current_dir}")
+
+try:
+    logging.info("Attempting to import required modules...")
+    from typing import Dict, List, Set
+    import time
+    from shopify_monitor import ShopifyMonitor
+    from discord_webhook import RateLimitedDiscordWebhook
+    from models import db, User, Store, Keyword, MonitorConfig
+    from sqlalchemy.exc import OperationalError, SQLAlchemyError
+    logging.info("All required modules imported successfully")
+except ImportError as e:
+    logging.error(f"Failed to import required modules: {e}")
+    logging.error(f"Python path: {sys.path}")
+    sys.exit(1)
 
 # Configure logging with rotation
 log_dir = Path('logs')
@@ -59,14 +74,6 @@ heartbeat_formatter = logging.Formatter('%(asctime)s - %(message)s')
 heartbeat_handler.setFormatter(heartbeat_formatter)
 heartbeat_logger.addHandler(heartbeat_handler)
 heartbeat_logger.setLevel(logging.INFO)
-
-# Log startup information
-logging.info("=== Monitor Starting ===")
-logging.info(f"Environment variables:")
-logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
-logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
-logging.info(f"Command line args: {sys.argv}")
-logging.info("=====================")
 
 # Add a logger for DNS resolution
 dns_logger = logging.getLogger('dns')
@@ -190,210 +197,209 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
                 return 0
 
 async def main():
-    start_time = time.time()
-    last_restart = start_time
-    restart_threshold = 12 * 3600  # Restart every 12 hours for memory management
+    try:
+        logging.info("=== Starting main monitor loop ===")
+        start_time = time.time()
+        last_restart = start_time
+        restart_threshold = 12 * 3600  # Restart every 12 hours for memory management
 
-    while True:
-        try:
-            # Extract user ID from command line arguments or environment variables
-            user_id = None
-
-            # Check environment variable first
-            env_user_id = os.environ.get('MONITOR_USER_ID')
-            if env_user_id:
-                try:
-                    user_id = int(env_user_id)
-                    logging.info(f"Got user ID from environment: {user_id}")
-                except ValueError:
-                    logging.error(f"Invalid MONITOR_USER_ID in environment: {env_user_id}")
-
-            # If not in environment, check command line args
-            if not user_id:
-                for arg in sys.argv[1:]:
-                    if arg.startswith("MONITOR_USER_ID="):
-                        try:
-                            user_id = int(arg.split("=")[1])
-                            logging.info(f"Got user ID from command line: {user_id}")
-                            break
-                        except ValueError:
-                            logging.error(f"Invalid MONITOR_USER_ID in command line: {arg}")
-
-            if not user_id:
-                logging.error("Error: MONITOR_USER_ID not provided in environment or command line")
-                sys.exit(1)
-
-            # Log all relevant environment variables for debugging
-            webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
-            logging.info(f"Starting monitor with configuration:")
-            logging.info(f"- User ID: {user_id}")
-            logging.info(f"- Webhook URL configured: {'Yes' if webhook_url else 'No'}")
-            logging.info(f"- Monitor uptime: {time.time() - start_time:.2f} seconds")
-
-
-            # Start heartbeat task
-            heartbeat_task = asyncio.create_task(send_heartbeat(user_id))
-
-            from app import create_app
-            app = create_app()
-
-            # Database connection management with retries
-            max_db_retries = 5
-            db_retry_count = 0
-
-            while True:
-                try:
-                    with app.app_context():
-                        if user_id not in user_seen_products:
-                            user_seen_products[user_id] = TTLCache()
-
-                        # Get the specific user with retry logic
-                        user = None
-                        for _ in range(3):
-                            try:
-                                # Use Session.get() instead of Query.get()
-                                user = db.session.get(User, user_id)
-                                if user and user.enabled:
-                                    break
-                                await asyncio.sleep(1)
-                            except SQLAlchemyError as e:
-                                logging.error(f"Database error fetching user: {e}")
-                                await asyncio.sleep(2)
-
-                        if not user or not user.enabled:
-                            logging.error(f"User {user_id} not found or disabled")
-                            sys.exit(1)
-
-                        config = MonitorConfig.query.filter_by(user_id=user_id).first()
-                        if not config:
-                            logging.error(f"No configuration found for user {user_id}")
-                            sys.exit(1)
-
-                        rate_limit_value = getattr(config, 'rate_limit', 0.5)
-                        monitor = ShopifyMonitor(rate_limit=rate_limit_value)
-                        webhook = RateLimitedDiscordWebhook(webhook_url=user.discord_webhook_url)
-
-                        logging.info(f"Monitoring configuration for user {user.username} (ID: {user_id})")
-                        logging.info(f"- Discord Webhook: {'Configured' if user.discord_webhook_url else 'Not configured'}")
-                        logging.info(f"- Rate limit: {config.rate_limit} req/s")
-                        logging.info(f"- Monitor delay: {config.monitor_delay}s")
-
-                        monitor_cycle = 0
-                        while True:
-                            # Check if we need to restart for memory management
-                            if time.time() - last_restart > restart_threshold:
-                                logging.info("Scheduled restart for memory management")
-                                sys.exit(0)  # Clean exit for restart
-
-                            cycle_start_time = time.time()
-                            monitor_cycle += 1
-                            logging.info(f"\n---- Monitor Cycle #{monitor_cycle} ----")
-
-                            try:
-                                # Refresh user and config from database
-                                db.session.remove()
-                                user = db.session.get(User, user_id)
-                                config = MonitorConfig.query.filter_by(user_id=user_id).first()
-
-                                if not user or not user.enabled:
-                                    logging.warning(f"User {user_id} was disabled, exiting...")
-                                    sys.exit(0)
-
-                                stores = Store.query.filter_by(user_id=user_id, enabled=True).all()
-                                keywords = Keyword.query.filter_by(user_id=user_id, enabled=True).all()
-
-                                if not stores or not keywords:
-                                    logging.info("No active stores or keywords. Waiting...")
-                                    await asyncio.sleep(config.monitor_delay)
-                                    continue
-
-                                # Process stores in parallel batches with improved efficiency
-                                batch_size = min(20, len(stores))  # Process up to 20 stores at once
-                                all_results = []
-
-                                # Group stores by retailer for better rate limiting
-                                stores_by_retailer = {}
-                                for store in stores:
-                                    retailer = store.url.split('/')[2]  # Extract domain
-                                    if retailer not in stores_by_retailer:
-                                        stores_by_retailer[retailer] = []
-                                    stores_by_retailer[retailer].append(store)
-
-                                # Process each retailer group separately
-                                for retailer, retailer_stores in stores_by_retailer.items():
-                                    logging.info(f"Processing {len(retailer_stores)} stores for retailer: {retailer}")
-
-                                    for i in range(0, len(retailer_stores), batch_size):
-                                        batch = retailer_stores[i:i + batch_size]
-                                        tasks = [
-                                            monitor_store(
-                                                store.url,
-                                                [kw.word for kw in keywords],
-                                                monitor,
-                                                webhook,
-                                                user_seen_products[user_id],
-                                                user_id
-                                            )
-                                            for store in batch
-                                        ]
-
-                                        # Process batch with individual error handling
-                                        try:
-                                            results = await asyncio.gather(*tasks, return_exceptions=True)
-                                            successful_results = []
-
-                                            for idx, result in enumerate(results):
-                                                if isinstance(result, Exception):
-                                                    store_url = batch[idx].url
-                                                    logging.error(f"Error processing store {store_url}: {str(result)}")
-                                                else:
-                                                    successful_results.append(result)
-
-                                            all_results.extend(successful_results)
-
-                                            # Add smaller delay between batches for the same retailer
-                                            if i + batch_size < len(retailer_stores):
-                                                await asyncio.sleep(0.25)  # Reduced delay between batches
-
-                                        except Exception as batch_error:
-                                            logging.error(f"Batch processing error for retailer {retailer}: {batch_error}")
-                                            continue
-
-                                total_new_products = sum(r for r in all_results if isinstance(r, int))
-                                logging.info(f"New products found: {total_new_products}")
-
-                                # Adaptive delay based on results and retailer
-                                cycle_duration = time.time() - cycle_start_time
-
-                                # More aggressive delay reduction when products are found
-                                delay_multiplier = 0.25 if total_new_products > 0 else 1.0
-                                # Cap minimum delay at 0.05 seconds
-                                sleep_time = max(0.05, config.monitor_delay * delay_multiplier - cycle_duration)
-                                logging.info(f"Cycle completed in {cycle_duration:.2f}s, waiting {sleep_time:.2f}s")
-                                await asyncio.sleep(sleep_time)
-
-                            except OperationalError as e:
-                                logging.error(f"Database error: {e}")
-                                await asyncio.sleep(5)
-                                break  # Reconnect to DB
-                            except Exception as e:
-                                logging.error(f"Cycle error: {e}")
-                                await asyncio.sleep(2)
-
-                except OperationalError as e:
-                    db_retry_count += 1
-                    if db_retry_count >= max_db_retries:
-                        logging.critical("Maximum database retry attempts reached")
+        while True:
+            try:
+                # Extract user ID from environment variables
+                user_id = None
+                env_user_id = os.environ.get('MONITOR_USER_ID')
+                if env_user_id:
+                    try:
+                        user_id = int(env_user_id)
+                        logging.info(f"Got user ID from environment: {user_id}")
+                    except ValueError:
+                        logging.error(f"Invalid MONITOR_USER_ID in environment: {env_user_id}")
                         sys.exit(1)
-                    logging.error(f"Database connection error (attempt {db_retry_count}/{max_db_retries}): {e}")
-                    await asyncio.sleep(5 * db_retry_count)
 
-        except KeyboardInterrupt:
-            logging.info("Monitoring stopped by user")
-            sys.exit(0)
-        except Exception as e:
-            logging.error(f"Fatal error: {e}")
-            await asyncio.sleep(30)
+                if not user_id:
+                    logging.error("Error: MONITOR_USER_ID not provided in environment")
+                    sys.exit(1)
+
+                logging.info("Creating Flask application...")
+                from app import create_app
+                app = create_app()
+                logging.info("Flask application created successfully")
+
+                while True:
+                    try:
+                        with app.app_context():
+                            logging.info("=== Entering app context ===")
+                            logging.info(f"Attempting database operations for user {user_id}")
+
+                            if user_id not in user_seen_products:
+                                user_seen_products[user_id] = TTLCache()
+                                logging.info(f"Created new TTLCache for user {user_id}")
+
+                            # Get the specific user with retry logic
+                            user = None
+                            for attempt in range(3):
+                                try:
+                                    logging.info(f"Attempting to fetch user (attempt {attempt + 1}/3)")
+                                    user = db.session.get(User, user_id)
+                                    if user and user.enabled:
+                                        logging.info(f"Found enabled user: {user.username} (ID: {user_id})")
+                                        break
+                                    elif user:
+                                        logging.warning(f"User found but disabled: {user.username} (ID: {user_id})")
+                                    else:
+                                        logging.warning(f"User not found: ID {user_id}")
+                                    await asyncio.sleep(1)
+                                except SQLAlchemyError as e:
+                                    logging.error(f"Database error fetching user (attempt {attempt + 1}): {e}")
+                                    await asyncio.sleep(2)
+
+                            if not user or not user.enabled:
+                                logging.error(f"User {user_id} not found or disabled")
+                                sys.exit(1)
+
+                            logging.info("Fetching monitor configuration...")
+                            config = MonitorConfig.query.filter_by(user_id=user_id).first()
+                            if not config:
+                                logging.error(f"No configuration found for user {user_id}")
+                                sys.exit(1)
+
+                            logging.info("Setting up monitor and webhook...")
+                            monitor = ShopifyMonitor(rate_limit=config.rate_limit)
+                            webhook = RateLimitedDiscordWebhook(webhook_url=user.discord_webhook_url)
+
+                            logging.info(f"Monitor configuration loaded for user {user.username} (ID: {user_id})")
+                            logging.info(f"- Discord Webhook: {'Configured' if user.discord_webhook_url else 'Not configured'}")
+                            logging.info(f"- Rate limit: {config.rate_limit} req/s")
+                            logging.info(f"- Monitor delay: {config.monitor_delay}s")
+
+                            logging.info("=== Starting monitoring loop ===")
+                            # Start heartbeat task
+                            heartbeat_task = asyncio.create_task(send_heartbeat(user_id))
+                            monitor_cycle = 0
+                            while True:
+                                # Check if we need to restart for memory management
+                                if time.time() - last_restart > restart_threshold:
+                                    logging.info("Scheduled restart for memory management")
+                                    sys.exit(0)  # Clean exit for restart
+
+                                cycle_start_time = time.time()
+                                monitor_cycle += 1
+                                logging.info(f"\n---- Monitor Cycle #{monitor_cycle} ----")
+
+                                try:
+                                    # Refresh user and config from database
+                                    db.session.remove()
+                                    user = db.session.get(User, user_id)
+                                    config = MonitorConfig.query.filter_by(user_id=user_id).first()
+
+                                    if not user or not user.enabled:
+                                        logging.warning(f"User {user_id} was disabled, exiting...")
+                                        sys.exit(0)
+
+                                    stores = Store.query.filter_by(user_id=user_id, enabled=True).all()
+                                    keywords = Keyword.query.filter_by(user_id=user_id, enabled=True).all()
+
+                                    if not stores or not keywords:
+                                        logging.info("No active stores or keywords. Waiting...")
+                                        await asyncio.sleep(config.monitor_delay)
+                                        continue
+
+                                    # Process stores in parallel batches with improved efficiency
+                                    batch_size = min(20, len(stores))  # Process up to 20 stores at once
+                                    all_results = []
+
+                                    # Group stores by retailer for better rate limiting
+                                    stores_by_retailer = {}
+                                    for store in stores:
+                                        retailer = store.url.split('/')[2]  # Extract domain
+                                        if retailer not in stores_by_retailer:
+                                            stores_by_retailer[retailer] = []
+                                        stores_by_retailer[retailer].append(store)
+
+                                    # Process each retailer group separately
+                                    for retailer, retailer_stores in stores_by_retailer.items():
+                                        logging.info(f"Processing {len(retailer_stores)} stores for retailer: {retailer}")
+
+                                        for i in range(0, len(retailer_stores), batch_size):
+                                            batch = retailer_stores[i:i + batch_size]
+                                            tasks = [
+                                                monitor_store(
+                                                    store.url,
+                                                    [kw.word for kw in keywords],
+                                                    monitor,
+                                                    webhook,
+                                                    user_seen_products[user_id],
+                                                    user_id
+                                                )
+                                                for store in batch
+                                            ]
+
+                                            # Process batch with individual error handling
+                                            try:
+                                                results = await asyncio.gather(*tasks, return_exceptions=True)
+                                                successful_results = []
+
+                                                for idx, result in enumerate(results):
+                                                    if isinstance(result, Exception):
+                                                        store_url = batch[idx].url
+                                                        logging.error(f"Error processing store {store_url}: {str(result)}")
+                                                    else:
+                                                        successful_results.append(result)
+
+                                                all_results.extend(successful_results)
+
+                                                # Add smaller delay between batches for the same retailer
+                                                if i + batch_size < len(retailer_stores):
+                                                    await asyncio.sleep(0.25)  # Reduced delay between batches
+
+                                            except Exception as batch_error:
+                                                logging.error(f"Batch processing error for retailer {retailer}: {batch_error}")
+                                                continue
+
+                                    total_new_products = sum(r for r in all_results if isinstance(r, int))
+                                    logging.info(f"New products found: {total_new_products}")
+
+                                    # Adaptive delay based on results and retailer
+                                    cycle_duration = time.time() - cycle_start_time
+
+                                    # More aggressive delay reduction when products are found
+                                    delay_multiplier = 0.25 if total_new_products > 0 else 1.0
+                                    # Cap minimum delay at 0.05 seconds
+                                    sleep_time = max(0.05, config.monitor_delay * delay_multiplier - cycle_duration)
+                                    logging.info(f"Cycle completed in {cycle_duration:.2f}s, waiting {sleep_time:.2f}s")
+                                    await asyncio.sleep(sleep_time)
+
+                                except OperationalError as e:
+                                    logging.error(f"Database error: {e}")
+                                    await asyncio.sleep(5)
+                                    break  # Reconnect to DB
+                                except Exception as e:
+                                    logging.error(f"Cycle error: {e}")
+                                    await asyncio.sleep(2)
+
+                    except OperationalError as e:
+                        logging.error(f"Database connection error: {e}")
+                        await asyncio.sleep(5)
+                    except Exception as e:
+                        logging.error(f"Unexpected error in inner loop: {e}")
+                        await asyncio.sleep(2)
+
+            except KeyboardInterrupt:
+                logging.info("Monitoring stopped by user")
+                sys.exit(0)
+            except Exception as e:
+                logging.error(f"Fatal error: {e}")
+                await asyncio.sleep(30)
+
+    except Exception as e:
+        logging.error(f"Fatal error in main function: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        logging.info("Starting monitor main loop")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Monitor stopped by user")
+    except Exception as e:
+        logging.error(f"Unhandled exception in main: {e}")
