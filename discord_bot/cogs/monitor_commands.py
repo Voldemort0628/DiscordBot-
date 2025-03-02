@@ -24,8 +24,8 @@ logging.basicConfig(
 class MonitorCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self._last_command_time = defaultdict(float)  # Track last command time per user
-        self._command_cooldown = 3.0  # Cooldown between commands (seconds)
+        self._last_command_time = defaultdict(float)  # Track last command time per user+channel
+        self._command_cooldown = 5.0  # Increased cooldown between commands (seconds)
         self._rate_limit_notified = set()  # Track users who've been notified of rate limits
         logging.info("MonitorCommands cog initialized")
 
@@ -33,47 +33,64 @@ class MonitorCommands(commands.Cog):
         """Handle rate limiting for commands"""
         current_time = time.time()
         user_id = ctx.author.id
+        channel_id = ctx.channel.id
+
+        # Use channel + user as key to track rate limits per channel
+        rate_key = f"{user_id}:{channel_id}"
 
         # Check if user is rate limited
-        if user_id in self._last_command_time:
-            time_since_last = current_time - self._last_command_time[user_id]
+        if rate_key in self._last_command_time:
+            time_since_last = current_time - self._last_command_time[rate_key]
             if time_since_last < self._command_cooldown:
                 # Only notify once about rate limiting
-                if user_id not in self._rate_limit_notified:
-                    await ctx.send(f"⚠️ Please wait a moment before using commands again.")
-                    self._rate_limit_notified.add(user_id)
+                if rate_key not in self._rate_limit_notified:
+                    rate_limit_embed = discord.Embed(
+                        title="⚠️ Rate Limit",
+                        description=f"Please wait {self._command_cooldown - time_since_last:.1f} seconds before using commands again.",
+                        color=discord.Color.orange()
+                    )
+                    await self.safe_send(ctx, embed=rate_limit_embed)
+                    self._rate_limit_notified.add(rate_key)
                 return True
 
         # Reset rate limit notification state and update last command time
-        self._rate_limit_notified.discard(user_id)
-        self._last_command_time[user_id] = current_time
+        self._rate_limit_notified.discard(rate_key)
+        self._last_command_time[rate_key] = current_time
         return False
 
     async def safe_send(self, ctx, content=None, embed=None):
         """Safely send a message with improved rate limiting"""
         try:
-            message = None
-            if content:
-                message = await ctx.send(content)
-            if embed:
-                if message:
-                    await message.edit(embed=embed)
-                else:
-                    message = await ctx.send(embed=embed)
-            return message
+            # Only send one message combining content and embed
+            if content and embed:
+                return await ctx.send(content=content, embed=embed)
+            elif content:
+                return await ctx.send(content=content)
+            elif embed:
+                return await ctx.send(embed=embed)
         except discord.Forbidden:
             try:
-                if content:
-                    await ctx.author.send(content)
-                if embed:
-                    await ctx.author.send(embed=embed)
+                # If we can't send in the channel, try DMing the user once
+                if content and embed:
+                    return await ctx.author.send(content=content, embed=embed)
+                elif content:
+                    return await ctx.author.send(content=content)
+                elif embed:
+                    return await ctx.author.send(embed=embed)
             except discord.Forbidden:
                 logging.error(f"Could not send message to user {ctx.author.id}")
         except discord.HTTPException as e:
             if e.code == 429:  # Rate limit error
-                await asyncio.sleep(2)  # Wait before retrying
-                return await self.safe_send(ctx, content, embed)
-            raise
+                retry_after = e.retry_after if hasattr(e, 'retry_after') else 2
+                await asyncio.sleep(retry_after)
+                # Only retry once to prevent infinite loops
+                if content and embed:
+                    return await ctx.send(content=content, embed=embed)
+                elif content:
+                    return await ctx.send(content=content)
+                elif embed:
+                    return await ctx.send(embed=embed)
+            logging.error(f"Error sending message: {e}")
 
     @commands.command(name='verify')
     async def verify_user(self, ctx):
@@ -83,11 +100,19 @@ class MonitorCommands(commands.Cog):
         try:
             logging.info(f"Verify command received from user {ctx.author.id}")
 
+            # Create single embed for all verification information
+            status_embed = discord.Embed(
+                title="Monitor Verification",
+                color=discord.Color.blue()
+            )
+
             try:
                 # Try to DM the user first to check if we can
-                await ctx.author.send("Processing your verification...")
+                status_embed.description = "Processing your verification..."
+                verification_msg = await ctx.author.send(embed=status_embed)
             except discord.Forbidden:
-                await self.safe_send(ctx, "I couldn't DM you. Please enable DMs from server members and try again.")
+                status_embed.description = "❌ I couldn't DM you. Please enable DMs from server members and try again."
+                await self.safe_send(ctx, embed=status_embed)
                 return
 
             # Connect to database
@@ -104,14 +129,12 @@ class MonitorCommands(commands.Cog):
                 result = cur.fetchone()
                 if result:
                     logging.info(f"Found existing user for Discord ID {ctx.author.id}")
-                    embed = discord.Embed(
-                        title="✅ Already Verified",
-                        description="Your Discord account is already verified and linked to the monitor.",
-                        color=discord.Color.green()
-                    )
-                    embed.add_field(name="Username", value=result[0])
-                    await ctx.author.send(embed=embed)
-                    await self.safe_send(ctx, "✅ Your account is already verified!")
+                    status_embed.title = "✅ Already Verified"
+                    status_embed.description = "Your Discord account is already verified and linked to the monitor."
+                    status_embed.color = discord.Color.green()
+                    status_embed.add_field(name="Username", value=result[0])
+                    await verification_msg.edit(embed=status_embed)
+                    await self.safe_send(ctx, embed=status_embed)
                     return
 
                 # Create new user
@@ -137,28 +160,40 @@ class MonitorCommands(commands.Cog):
                 conn.commit()
                 logging.info(f"Successfully created user {username} with Discord ID {ctx.author.id}")
 
-                embed = discord.Embed(
+                status_embed.title = "✅ Verification Successful"
+                status_embed.description = "Your Discord account has been verified and linked to the monitor."
+                status_embed.color = discord.Color.green()
+                status_embed.add_field(name="Username", value=username)
+                await verification_msg.edit(embed=status_embed)
+
+                # Send a simplified success message in the channel
+                channel_embed = discord.Embed(
                     title="✅ Verification Successful",
-                    description="Your Discord account has been verified and linked to the monitor.",
+                    description="Check your DMs for details.",
                     color=discord.Color.green()
                 )
-                embed.add_field(name="Username", value=username)
-                await ctx.author.send(embed=embed)
-
-                await self.safe_send(ctx, "✅ Verification successful! Check your DMs for details.")
+                await self.safe_send(ctx, embed=channel_embed)
 
             except Exception as e:
                 conn.rollback()
                 logging.error(f"Database error during verification: {str(e)}")
-                await self.safe_send(ctx, "❌ Error during verification. Please try again later.")
+                status_embed.title = "❌ Verification Error"
+                status_embed.description = "Error during verification. Please try again later."
+                status_embed.color = discord.Color.red()
+                await verification_msg.edit(embed=status_embed)
+                await self.safe_send(ctx, embed=status_embed)
             finally:
                 cur.close()
                 conn.close()
 
         except Exception as e:
             logging.error(f"Error verifying user: {e}")
-            await self.safe_send(ctx, "❌ Error during verification. Please try again later.")
-
+            error_embed = discord.Embed(
+                title="❌ Verification Error",
+                description="Error during verification. Please try again later.",
+                color=discord.Color.red()
+            )
+            await self.safe_send(ctx, embed=error_embed)
 
     @commands.command(name='status')
     async def check_status(self, ctx):
@@ -729,7 +764,7 @@ def is_monitor_running(user_id):
 
                 is_monitor = ('python' in proc.info['name'] and 'main.py' in cmdline)
                 has_user_id = (str(user_id) == env.get('MONITOR_USER_ID', '') or
-                             f"MONITOR_USER_ID={user_id}" in cmdline)
+                                 f"MONITOR_USER_ID={user_id}" in cmdline)
 
                 if is_monitor and has_user_id:
                     try:

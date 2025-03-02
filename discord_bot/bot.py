@@ -15,6 +15,65 @@ logging.basicConfig(
     ]
 )
 
+class CustomHelpCommand(commands.HelpCommand):
+    async def send_bot_help(self, mapping):
+        """Sends the bot help message in a single embed"""
+        embed = discord.Embed(
+            title="Monitor Bot Commands",
+            description="Here are all available commands:",
+            color=discord.Color.blue()
+        )
+
+        # Create a single field for all commands
+        all_commands = []
+        for cog, cmds in mapping.items():
+            filtered = await self.filter_commands(cmds, sort=True)
+            for cmd in filtered:
+                all_commands.append(f"`!{cmd.name}` - {cmd.help or 'No description available'}")
+
+        if all_commands:
+            embed.add_field(
+                name="Available Commands",
+                value="\n".join(all_commands),
+                inline=False
+            )
+
+        embed.set_footer(text="Type !help <command> for more info about a command.")
+        channel = self.get_destination()
+        try:
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            # If embed is too large, split into smaller sections
+            await channel.send("⚠️ Error displaying help. Please use !help <command> for specific command help.")
+
+    async def send_command_help(self, command):
+        """Sends help for a specific command in a single embed"""
+        embed = discord.Embed(
+            title=f"Command: !{command.name}",
+            description=command.help or "No description available",
+            color=discord.Color.blue()
+        )
+
+        # Combine all command info into the description
+        details = []
+        if command.aliases:
+            details.append(f"**Aliases:** {', '.join(f'`!{alias}`' for alias in command.aliases)}")
+        if command.usage:
+            details.append(f"**Usage:** `!{command.name} {command.usage}`")
+
+        if details:
+            embed.description += "\n\n" + "\n".join(details)
+
+        channel = self.get_destination()
+        try:
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            await channel.send(f"⚠️ Error displaying help for `{command.name}`.")
+
+    # Override group help to prevent multiple messages
+    send_group_help = send_command_help
+    send_cog_help = send_bot_help
+
 class MonitorBot(commands.Bot):
     def __init__(self):
         # Configure proper intents with all required permissions
@@ -26,9 +85,7 @@ class MonitorBot(commands.Bot):
         super().__init__(
             command_prefix='!',
             intents=intents,
-            help_command=commands.DefaultHelpCommand(
-                no_category='Monitor Commands'
-            )
+            help_command=CustomHelpCommand()
         )
 
         # API configuration
