@@ -11,6 +11,7 @@ import subprocess
 import asyncio
 import secrets
 from werkzeug.security import generate_password_hash
+import json
 
 logger = logging.getLogger('MonitorCommands')
 
@@ -127,32 +128,122 @@ class MonitorCommands(commands.Cog):
             except discord.Forbidden:
                 await ctx.send("❌ I couldn't send you a DM. Please enable DMs from server members.")
 
+    async def _update_monitor_status(self, user_id, is_running):
+        """Update monitor status in database"""
+        async def db_update(conn, cur):
+            cur.execute(
+                'UPDATE "user" SET enabled = %s WHERE id = %s;',
+                (is_running, user_id)
+            )
+            conn.commit()
+            return True
+        return await self._handle_db_operation(db_update)
+
     def _is_monitor_running(self, user_id):
         """Check if monitor is running for user"""
         try:
+            # First check tracking file
+            tracking_file = f"monitor_process_{user_id}.json"
+            logger.info(f"Checking monitor status for user {user_id}")
+            logger.info(f"Looking for tracking file: {tracking_file}")
+
+            if os.path.exists(tracking_file):
+                try:
+                    with open(tracking_file) as f:
+                        process_info = json.load(f)
+                        pid = process_info.get('pid')
+                        logger.info(f"Found tracking file for user {user_id}. PID: {pid}")
+                        if pid:
+                            try:
+                                process = psutil.Process(pid)
+                                if process.is_running():
+                                    # Verify it's our monitor process
+                                    cmdline = ' '.join(process.cmdline())
+                                    env = process.environ()
+                                    logger.info(f"Process {pid} found running. Command line: {cmdline}")
+                                    logger.info(f"Process environment: MONITOR_USER_ID={env.get('MONITOR_USER_ID')}")
+
+                                    if ('python' in process.name().lower() and 
+                                        ('main.py' in cmdline or 'start_monitor.py' in cmdline)):
+                                        logger.info(f"✓ Confirmed monitor process for user {user_id} with PID {pid}")
+                                        return True
+                                else:
+                                    logger.info(f"Process {pid} is not running")
+                            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                logger.error(f"Error checking process {pid}: {e}")
+                        # If we get here, the tracking file is stale
+                        logger.info(f"Removing stale tracking file for user {user_id}")
+                        os.remove(tracking_file)
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.error(f"Error reading tracking file: {e}")
+                    try:
+                        os.remove(tracking_file)
+                    except OSError:
+                        pass
+
+            # Fallback to process scanning
+            logger.info(f"Scanning for monitor process for user {user_id}")
+            monitor_found = False
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
                 try:
-                    # Check both environment variable and command line
                     env = proc.info.get('environ', {})
                     cmdline = ' '.join(proc.info['cmdline'] or [])
 
                     is_python = 'python' in proc.info['name'].lower()
                     is_monitor = ('main.py' in cmdline or 'start_monitor.py' in cmdline)
                     has_user_id = (
-                        f"MONITOR_USER_ID={user_id}" in cmdline or
-                        env.get('MONITOR_USER_ID') == str(user_id)
+                        env.get('MONITOR_USER_ID') == str(user_id) or
+                        f"MONITOR_USER_ID={user_id}" in cmdline
                     )
 
-                    if is_python and is_monitor and has_user_id:
-                        logger.info(f"Found monitor process for user {user_id}: PID {proc.pid}")
-                        return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    if is_python and is_monitor:
+                        logger.info(f"Found Python monitor process: PID {proc.info['pid']}")
+                        logger.info(f"Process command line: {cmdline}")
+                        logger.info(f"Process environment MONITOR_USER_ID: {env.get('MONITOR_USER_ID')}")
+
+                        if has_user_id:
+                            monitor_found = True
+                            logger.info(f"✓ Confirmed monitor process for user {user_id}: PID {proc.info['pid']}")
+                            break
+                        else:
+                            logger.info(f"× Process PID {proc.info['pid']} belongs to different user")
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    logger.error(f"Error checking process: {e}")
                     continue
-            logger.info(f"No monitor process found for user {user_id}")
-            return False
+
+            if not monitor_found:
+                logger.info(f"No monitor process found for user {user_id}")
+                asyncio.create_task(self._update_monitor_status(user_id, False))
+
+            return monitor_found
+
         except Exception as e:
             logger.error(f"Error checking monitor status: {e}")
             return False
+
+    async def _get_monitor_pid(self, user_id):
+        """Get the PID of a user's monitor process if running"""
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
+                try:
+                    env = proc.info.get('environ', {})
+                    cmdline = ' '.join(proc.info['cmdline'] or [])
+
+                    is_python = 'python' in proc.info['name'].lower()
+                    is_monitor = ('main.py' in cmdline or 'start_monitor.py' in cmdline)
+                    has_user_id = (
+                        env.get('MONITOR_USER_ID') == str(user_id) or
+                        f"MONITOR_USER_ID={user_id}" in cmdline
+                    )
+
+                    if is_python and is_monitor and has_user_id:
+                        return proc.info['pid']
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            return None
+        except Exception as e:
+            logger.error(f"Error getting monitor PID: {e}")
+            return None
 
     @commands.command(name='start', help="Start your monitor")
     async def start_monitor(self, ctx):
@@ -180,7 +271,10 @@ class MonitorCommands(commands.Cog):
             if self._is_monitor_running(user_id):
                 return "Monitor is already running!"
 
+            # Set webhook_url if not set
             webhook_url = webhook_url if webhook_url else os.environ.get('DISCORD_WEBHOOK_URL')
+
+            # Update user status
             cur.execute(
                 'UPDATE "user" SET enabled = true WHERE id = %s;',
                 (user_id,)
@@ -192,6 +286,10 @@ class MonitorCommands(commands.Cog):
         if not result:
             await ctx.send("❌ Error starting monitor. Database error.")
             return
+        if isinstance(result, str):
+            await ctx.send(result)
+            return
+
         user_id, webhook_url, store_count = result
 
         status_message = await ctx.send("⌛ Starting monitor, please wait...")
@@ -199,12 +297,17 @@ class MonitorCommands(commands.Cog):
         process_env = os.environ.copy()
         process_env['DISCORD_WEBHOOK_URL'] = webhook_url
         process_env['MONITOR_USER_ID'] = str(user_id)
+
+        logger.info(f"Starting monitor for user {user_id} with environment: MONITOR_USER_ID={user_id}")
+
         process = subprocess.Popen(
             [sys.executable, start_script, str(user_id)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
-            env=process_env
+            text=True,
+            bufsize=1,
+            env=process_env,
+            start_new_session=True
         )
 
         max_retries = 3
@@ -222,6 +325,9 @@ class MonitorCommands(commands.Cog):
             elif retry < max_retries - 1:
                 await status_message.edit(content=f"⌛ Starting monitor (attempt {retry + 1}/{max_retries})...")
 
+        # If we get here, the monitor failed to start
+        error_output = process.stdout.read() if process.stdout else "No error output available"
+        logger.error(f"Failed to start monitor for user {user_id}. Error output: {error_output}")
         await status_message.edit(content="❌ Failed to start monitor. Please try again later.")
 
     @commands.command(name='stop', help="Stop your monitor")
@@ -245,38 +351,36 @@ class MonitorCommands(commands.Cog):
             await ctx.send("❌ You need to verify your account first.")
             return
 
-        stopped = False
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        status_message = await ctx.send("⌛ Stopping monitor...")
+        monitor_pid = await self._get_monitor_pid(user_id)
+
+        if monitor_pid is None:
+            await status_message.edit(content="Monitor is not running.")
+            await self._update_monitor_status(user_id, False)
+            return
+
+        try:
+            process = psutil.Process(monitor_pid)
+            process.terminate()
             try:
-                cmdline = ' '.join(proc.info['cmdline'] or [])
-                if ('python' in proc.info['name'] and 
-                    'main.py' in cmdline and 
-                    f"MONITOR_USER_ID={user_id}" in cmdline):
-                    process = psutil.Process(proc.info['pid'])
-                    process.terminate()
-                    try:
-                        process.wait(timeout=3)
-                        stopped = True
-                    except psutil.TimeoutExpired:
-                        process.kill()
-                        stopped = True
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+                process.wait(timeout=3)
+                logger.info(f"Successfully terminated process {monitor_pid}")
+            except psutil.TimeoutExpired:
+                process.kill()
+                logger.info(f"Force killed process {monitor_pid}")
 
-        async def db_update_enabled(conn, cur):
-            cur.execute(
-                'UPDATE "user" SET enabled = false WHERE id = %s;',
-                (user_id,)
-            )
-            conn.commit()
-            return True
+            # Update database status
+            await self._update_monitor_status(user_id, False)
 
-        await self._handle_db_operation(db_update_enabled)
-
-        if stopped:
-            await ctx.send("✅ Monitor stopped successfully!")
-        else:
-            await ctx.send("Monitor was not running.")
+            # Double check if process is really stopped
+            time.sleep(1)
+            if self._is_monitor_running(user_id):
+                await status_message.edit(content="❌ Failed to stop monitor. Please try again.")
+            else:
+                await status_message.edit(content="✅ Monitor stopped successfully!")
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            logger.error(f"Error stopping process {monitor_pid}: {e}")
+            await status_message.edit(content="❌ Error stopping monitor. Please try again.")
 
     @commands.command(name='keywords', help="List your keywords")
     async def list_keywords(self, ctx):

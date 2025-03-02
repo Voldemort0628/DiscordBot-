@@ -5,6 +5,7 @@ import os
 import signal
 import datetime
 import logging
+import json
 
 def start_monitor(user_id):
     # Configure logging
@@ -35,9 +36,20 @@ def start_monitor(user_id):
     env["PYTHONUNBUFFERED"] = "1"
     env["MONITOR_USER_ID"] = str(user_id)  # Ensure user_id is set in environment
 
+    # Create a process tracking file
+    process_info = {
+        "user_id": user_id,
+        "start_time": datetime.datetime.now().isoformat(),
+        "log_file": log_file
+    }
+    tracking_file = f"monitor_process_{user_id}.json"
+    with open(tracking_file, "w") as f:
+        json.dump(process_info, f)
+
     logging.info("Environment variables set:")
     logging.info(f"- MONITOR_USER_ID: {env.get('MONITOR_USER_ID')}")
     logging.info(f"- DISCORD_WEBHOOK_URL: {'Set' if env.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+    logging.info(f"- Process tracking file: {tracking_file}")
 
     # Start the monitor process with log file
     with open(log_file, "w") as log:
@@ -62,12 +74,22 @@ def start_monitor(user_id):
         log.write(f"Monitor started with PID: {monitor_process.pid}\n")
         log.flush()
 
+        # Update tracking file with PID
+        process_info["pid"] = monitor_process.pid
+        with open(tracking_file, "w") as f:
+            json.dump(process_info, f)
+
     # Give the process a moment to start
     time.sleep(2)
 
     # Check if process is still running
     if monitor_process.poll() is not None:
         logging.error("Monitor process failed to start")
+        # Clean up tracking file
+        try:
+            os.remove(tracking_file)
+        except OSError:
+            pass
         return 1
 
     # Stream output in real-time
@@ -94,6 +116,12 @@ def start_monitor(user_id):
         except subprocess.TimeoutExpired:
             monitor_process.kill()
             logging.info("Monitor process killed")
+    finally:
+        # Clean up tracking file
+        try:
+            os.remove(tracking_file)
+        except OSError:
+            pass
 
     return monitor_process.returncode
 
