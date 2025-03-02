@@ -7,6 +7,8 @@ from discord_webhook import RateLimitedDiscordWebhook
 import subprocess
 import psutil
 import time
+from api_routes import api # Import the api blueprint
+
 
 def is_monitor_running(user_id):
     """Check if a specific user's monitor is running"""
@@ -343,6 +345,9 @@ def create_app():
             print(f"Error in toggle_monitor: {e}")
             flash(f'Error toggling monitor: {str(e)}', 'error')
             return redirect(url_for('dashboard'))
+
+    # Register the API blueprint
+    app.register_blueprint(api, url_prefix='/api')
 
     return app
 
