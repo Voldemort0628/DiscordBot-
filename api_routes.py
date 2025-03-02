@@ -25,20 +25,24 @@ def verify_request():
 def get_status():
     try:
         user_id = request.args.get('user_id', type=int)
-        if not user_id:
-            logging.error("Status request missing user_id")
-            return jsonify({'error': 'User ID required'}), 400
+        discord_user_id = request.args.get('discord_user_id', type=str)
 
-        user = User.query.get(user_id)
+        if not discord_user_id:
+            logging.error("Status request missing discord_user_id")
+            return jsonify({'error': 'Discord user ID required'}), 400
+
+        # First try to find user by Discord ID
+        user = User.query.filter_by(discord_user_id=discord_user_id).first()
+
         if not user:
-            logging.error(f"Status request for non-existent user {user_id}")
-            return jsonify({'error': 'User not found'}), 404
+            logging.error(f"Status request for unregistered Discord user {discord_user_id}")
+            return jsonify({'error': 'Your Discord account is not registered with the monitor'}), 404
 
         # Check if monitor is running using app.py's is_monitor_running function
         from app import is_monitor_running
-        is_running = is_monitor_running(user_id)
+        is_running = is_monitor_running(user.id)
 
-        logging.info(f"Status request for user {user_id}: running={is_running}")
+        logging.info(f"Status request for user {user.id}: running={is_running}")
         return jsonify({
             'running': is_running,
             'user_id': user.id,
@@ -46,6 +50,34 @@ def get_status():
         })
     except Exception as e:
         logging.error(f"Error in status endpoint: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@api.route('/link_discord', methods=['POST'])
+def link_discord_account():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        discord_user_id = data.get('discord_user_id')
+
+        if not all([username, password, discord_user_id]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        user = User.query.filter_by(username=username).first()
+        if not user or not user.check_password(password):
+            return jsonify({'error': 'Invalid username or password'}), 401
+
+        user.discord_user_id = discord_user_id
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Discord account linked successfully',
+            'user_id': user.id,
+            'username': user.username
+        })
+    except Exception as e:
+        logging.error(f"Error linking Discord account: {e}")
+        db.session.rollback()
         return jsonify({'error': 'Internal server error'}), 500
 
 @api.route('/start', methods=['POST'])

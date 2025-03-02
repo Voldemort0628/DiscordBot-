@@ -9,6 +9,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     discord_webhook_url = db.Column(db.String(500))
+    discord_user_id = db.Column(db.String(20))  # Added to store Discord user ID
     enabled = db.Column(db.Boolean, default=True)
 
     # Relationships
