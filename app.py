@@ -12,7 +12,6 @@ import time
 from api_routes import api # Import the api blueprint
 from requests_oauthlib import OAuth2Session
 
-
 def is_monitor_running(user_id):
     """Check if a specific user's monitor is running"""
     try:
@@ -352,11 +351,17 @@ def create_app():
     app.config['DISCORD_CLIENT_SECRET'] = os.environ.get('DISCORD_CLIENT_SECRET')
     app.config['DISCORD_BOT_TOKEN'] = os.environ.get('DISCORD_BOT_TOKEN')
 
+    # Set environment based on REPL_SLUG presence
+    is_development = not bool(os.environ.get('REPL_SLUG'))
+    os.environ['FLASK_ENV'] = 'development' if is_development else 'production'
+
     # Set redirect URI based on environment
-    if os.environ.get('FLASK_ENV') == 'development':
+    if is_development:
         app.config['DISCORD_REDIRECT_URI'] = 'http://localhost:5000/oauth-callback'
+        logging.info('Running in development mode with local redirect URI')
     else:
         app.config['DISCORD_REDIRECT_URI'] = f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.co/oauth-callback'
+        logging.info('Running in production mode with Replit redirect URI')
 
     DISCORD_AUTHORIZATION_BASE_URL = 'https://discord.com/api/oauth2/authorize'
     DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token'
