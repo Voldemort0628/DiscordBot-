@@ -147,17 +147,12 @@ class MonitorCommands(commands.Cog):
         try:
             # Get base URL from API URL but remove /api suffix
             base_url = self.bot.api_base_url.replace('/api', '')
-            # Use the local development URL when testing
-            if 'localhost' in base_url:
-                login_url = 'http://localhost:5000/discord-login'
-            else:
-                login_url = f"{base_url}/discord-login"
 
             embed = discord.Embed(
                 title="Link Your Discord Account",
                 description=(
                     "Click the link below to connect your Discord account with the monitor:\n"
-                    f"🔗 [Login with Discord]({login_url})"
+                    f"🔗 [Login with Discord]({base_url}/discord-login)"
                 ),
                 color=discord.Color.blue()
             )
