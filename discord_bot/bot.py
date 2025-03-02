@@ -51,6 +51,9 @@ class MonitorBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
+        intents.guild_messages = True
+        intents.guild_reactions = True
+        intents.members = True  # Need this for user management
 
         super().__init__(
             command_prefix='!',
@@ -71,7 +74,13 @@ class MonitorBot(commands.Bot):
 
     async def on_command_error(self, ctx, error):
         """Log command errors"""
-        logger.error(f"Command error - {ctx.command.name if ctx.command else 'Unknown'} from {ctx.author}: {str(error)}")
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("❌ I don't have the required permissions to perform this action.")
+        elif isinstance(error, discord.Forbidden):
+            await ctx.send("❌ I don't have permission to send messages in this channel.")
+        else:
+            logger.error(f"Command error - {ctx.command.name if ctx.command else 'Unknown'} from {ctx.author}: {str(error)}")
+            await ctx.send("❌ An error occurred while processing your command.")
 
 def main():
     # Ensure only one instance runs

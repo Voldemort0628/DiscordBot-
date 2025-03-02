@@ -327,10 +327,11 @@ def create_app():
                 # Start a new monitor process for this user
                 env = os.environ.copy()
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
+                env['MONITOR_USER_ID'] = str(current_user.id)  # Set environment variable explicitly
 
                 # Use start_new_session to ensure the monitor runs independently
-                subprocess.Popen(
-                    ['python', 'main.py', f"MONITOR_USER_ID={current_user.id}"],
+                process = subprocess.Popen(
+                    ['python', 'start_monitor.py', str(current_user.id)],
                     env=env,
                     start_new_session=True
                 )

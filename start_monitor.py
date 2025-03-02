@@ -30,22 +30,14 @@ def start_monitor(user_id):
         logging.error("Missing DISCORD_WEBHOOK_URL environment variable")
         return 1
 
-    # Kill any existing monitor processes
-    try:
-        subprocess.run(
-            "pkill -f 'python main.py MONITOR_USER_ID='",
-            shell=True,
-            stderr=subprocess.DEVNULL
-        )
-        logging.info("Killed any existing monitor processes")
-        time.sleep(1)  # Give time for processes to terminate
-    except Exception as e:
-        logging.error(f"Error killing existing monitors: {e}")
-
     # Set environment variables for better debugging
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     env["MONITOR_USER_ID"] = str(user_id)  # Ensure user_id is set in environment
+
+    logging.info("Environment variables set:")
+    logging.info(f"- MONITOR_USER_ID: {env.get('MONITOR_USER_ID')}")
+    logging.info(f"- DISCORD_WEBHOOK_URL: {'Set' if env.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
 
     # Start the monitor process with log file
     with open(log_file, "w") as log:
@@ -57,12 +49,13 @@ def start_monitor(user_id):
 
         # Start the monitor process
         monitor_process = subprocess.Popen(
-            [sys.executable, "main.py", f"MONITOR_USER_ID={user_id}"],
+            [sys.executable, "main.py"],  # Don't pass user_id as argument, use env var
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            env=env
+            env=env,
+            start_new_session=True
         )
 
         logging.info(f"Monitor started with PID: {monitor_process.pid}")

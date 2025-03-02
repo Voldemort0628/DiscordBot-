@@ -9,6 +9,8 @@ import time
 from datetime import datetime
 import subprocess
 import asyncio
+import secrets
+from werkzeug.security import generate_password_hash
 
 logger = logging.getLogger('MonitorCommands')
 
@@ -58,9 +60,13 @@ class MonitorCommands(commands.Cog):
                 return "✅ Your account is already verified!"
 
             username = f"discord_{ctx.author.name}"
+            # Create user with random password
+            password = secrets.token_urlsafe(32)
+            password_hash = generate_password_hash(password)
+
             cur.execute(
-                'INSERT INTO "user" (username, discord_user_id, enabled) VALUES (%s, %s, true) RETURNING id',
-                (username, str(ctx.author.id))
+                'INSERT INTO "user" (username, discord_user_id, enabled, password_hash) VALUES (%s, %s, true, %s) RETURNING id',
+                (username, str(ctx.author.id), password_hash)
             )
             user_id = cur.fetchone()[0]
 
@@ -95,12 +101,18 @@ class MonitorCommands(commands.Cog):
             return
 
         running = self._is_monitor_running(user_id)
-        embed = discord.Embed(
-            title="Monitor Status",
-            description="✅ Running" if running else "❌ Stopped",
-            color=discord.Color.green() if running else discord.Color.red()
-        )
-        await ctx.send(embed=embed)
+        try:
+            # Try sending a simple text message first
+            status_msg = f"Monitor Status: {'✅ Running' if running else '❌ Stopped'}"
+            await ctx.send(status_msg)
+        except discord.Forbidden:
+            try:
+                # If server message fails, try DMing the user
+                await ctx.author.send(f"{status_msg}\n\nNote: Use DMs for detailed status information.")
+                if isinstance(ctx.channel, discord.TextChannel):  # Only send this if in a server channel
+                    await ctx.send("📨 Status sent via DM!")
+            except discord.Forbidden:
+                await ctx.send("❌ I couldn't send you a DM. Please enable DMs from server members.")
 
     def _is_monitor_running(self, user_id):
         """Check if monitor is running for user"""
@@ -248,32 +260,32 @@ class MonitorCommands(commands.Cog):
         if not await self._check_cooldown(ctx):
             return
 
-        async def db_keywords(conn, cur):
-            cur.execute(
-                '''SELECT k.word, k.enabled 
-                FROM keyword k 
-                JOIN "user" u ON k.user_id = u.id 
-                WHERE u.discord_user_id = %s;''',
-                (str(ctx.author.id),)
-            )
-            return cur.fetchall()
+        try:
+            async def db_keywords(conn, cur):
+                cur.execute(
+                    '''SELECT k.word, k.enabled 
+                    FROM keyword k 
+                    JOIN "user" u ON k.user_id = u.id 
+                    WHERE u.discord_user_id = %s;''',
+                    (str(ctx.author.id),)
+                )
+                return cur.fetchall()
 
-        keywords = await self._handle_db_operation(db_keywords)
-        if not keywords:
-            await ctx.send("No keywords found. Add some using `!add_keyword <word>`")
-            return
+            keywords = await self._handle_db_operation(db_keywords)
+            if not keywords:
+                await ctx.send("No keywords found. Add some using `!add_keyword <word>`")
+                return
 
-        embed = discord.Embed(
-            title="Your Keywords",
-            color=discord.Color.blue()
-        )
-        for word, enabled in keywords:
-            embed.add_field(
-                name=word,
-                value="✅ Enabled" if enabled else "❌ Disabled",
-                inline=True
-            )
-        await ctx.send(embed=embed)
+            # Send as plain text instead of embed if permissions are limited
+            message = "Your Keywords:\n"
+            for word, enabled in keywords:
+                message += f"• {word}: {'✅ Enabled' if enabled else '❌ Disabled'}\n"
+            await ctx.send(message)
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to send rich messages. Please give me 'Embed Links' permission or contact an admin.")
+        except Exception as e:
+            logger.error(f"Error in keywords command: {e}")
+            await ctx.send("❌ Error listing keywords. Please try again.")
 
     @commands.command(name='add_keyword', help="Add a keyword to monitor")
     async def add_keyword(self, ctx, *, keyword: str):
@@ -447,11 +459,7 @@ class MonitorCommands(commands.Cog):
             await ctx.send("No stores found. Add some using `!add_store <url>` or `!preset_stores`")
             return
 
-        embed = discord.Embed(
-            title="Your Monitored Stores",
-            color=discord.Color.blue()
-        )
-
+        # Prepare a plain text message
         enabled_stores = []
         disabled_stores = []
         for url, enabled in stores:
@@ -460,21 +468,28 @@ class MonitorCommands(commands.Cog):
             else:
                 disabled_stores.append(url)
 
+        message = "Your Monitored Stores:\n\n"
         if enabled_stores:
-            embed.add_field(
-                name="✅ Active Stores",
-                value="\n".join(enabled_stores),
-                inline=False
-            )
+            message += "✅ Active Stores:\n"
+            message += "\n".join(f"• {url}" for url in enabled_stores)
+            message += "\n\n"
         if disabled_stores:
-            embed.add_field(
-                name="❌ Disabled Stores",
-                value="\n".join(disabled_stores),
-                inline=False
-            )
+            message += "❌ Disabled Stores:\n"
+            message += "\n".join(f"• {url}" for url in disabled_stores)
 
-        embed.set_footer(text="Use !add_store to add more stores or !preset_stores to add preset stores")
-        await ctx.send(embed=embed)
+        message += "\nUse !add_store to add more stores or !preset_stores to add preset stores"
+
+        try:
+            # Try sending in the current channel
+            await ctx.send(message)
+        except discord.Forbidden:
+            try:
+                # If that fails, try DMing the user
+                await ctx.author.send(message)
+                if isinstance(ctx.channel, discord.TextChannel):  # Only send this if in a server channel
+                    await ctx.send("📨 Store list sent via DM!")
+            except discord.Forbidden:
+                await ctx.send("❌ I couldn't send you a DM. Please enable DMs from server members.")
 
     @commands.command(name='set_webhook', help="Set your custom Discord webhook URL (via DM only)")
     async def set_webhook(self, ctx):
@@ -519,6 +534,39 @@ class MonitorCommands(commands.Cog):
 
         except asyncio.TimeoutError:
             await ctx.send("Webhook setup timed out. Please try again.")
+
+    @commands.command(name='remove_store', help="Remove a store URL from your monitor")
+    async def remove_store(self, ctx, *, store_url: str):
+        if not await self._check_cooldown(ctx):
+            return
+
+        if not store_url.startswith(('http://', 'https://')):
+            store_url = 'https://' + store_url
+
+        async def db_remove_store(conn, cur):
+            cur.execute(
+                'SELECT id FROM "user" WHERE discord_user_id = %s;',
+                (str(ctx.author.id),)
+            )
+            result = cur.fetchone()
+            if not result:
+                return None
+            user_id = result[0]
+
+            cur.execute(
+                'DELETE FROM store WHERE user_id = %s AND url = %s RETURNING url;',
+                (user_id, store_url)
+            )
+            deleted = cur.fetchone()
+            if deleted:
+                conn.commit()
+                return f"✅ Removed store: `{store_url}`"
+            else:
+                return "⚠️ Store not found in your list."
+
+        result = await self._handle_db_operation(db_remove_store)
+        await ctx.send(result or "❌ Error removing store.")
+
 
 async def setup(bot):
     await bot.add_cog(MonitorCommands(bot))
