@@ -22,6 +22,7 @@ class MonitorBot(commands.Bot):
         intents.message_content = True
         intents.guilds = True
         intents.guild_messages = True
+        intents.dm_messages = True  # Enable DM messages
 
         super().__init__(
             command_prefix='!',
@@ -46,44 +47,50 @@ class MonitorBot(commands.Bot):
             self.api_base_url = 'http://localhost:5000/api'
             logging.info("Using local development API URL")
 
-        self.api_key = os.environ['MONITOR_API_KEY']
-
     async def setup_hook(self):
+        """A coroutine to be called to setup the bot, by default does nothing.
+        This is the method called by :meth:`.login` to setup the bot when it starts.
+        """
         try:
+            # Load the monitor commands cog
             await self.load_extension('cogs.monitor_commands')
             logging.info("Successfully loaded monitor commands extension")
         except Exception as e:
             logging.error(f"Failed to load monitor commands extension: {e}")
+            raise  # Re-raise the exception to ensure the bot doesn't start with missing commands
 
     async def on_ready(self):
+        """Called when the bot is ready and has a connection to Discord."""
         logging.info(f'Logged in as {self.user.name} (ID: {self.user.id})')
         logging.info('------')
         logging.info(f'API URL: {self.api_base_url}')
-        logging.info('API Key configured: Yes' if self.api_key else 'API Key missing')
         logging.info('Bot is ready to accept commands!')
 
-        # Log loaded commands
+        # Log all available commands
         for command in self.commands:
             logging.info(f'Command loaded: {command.name}')
 
-    async def on_command(self, ctx):
-        logging.info(f"Command '{ctx.command.name}' was triggered by {ctx.author} (ID: {ctx.author.id})")
-
     async def on_command_error(self, ctx, error):
+        """Global error handler for command errors."""
         if isinstance(error, commands.errors.CommandNotFound):
-            await ctx.send(f"Command not found. Use !help to see available commands.")
+            await ctx.send("Command not found. Use !help to see available commands.")
+        elif isinstance(error, commands.errors.MissingPermissions):
+            await ctx.send("You don't have permission to use this command.")
+        elif isinstance(error, commands.errors.NoPrivateMessage):
+            await ctx.send("This command cannot be used in private messages.")
         else:
             logging.error(f"Command error: {error}")
             await ctx.send(f"An error occurred while processing the command: {str(error)}")
 
 def main():
-    # Set Discord token from environment variable
+    # Verify required environment variables
     token = os.environ.get('DISCORD_BOT_TOKEN')
     if not token:
         raise ValueError("DISCORD_BOT_TOKEN not set in environment")
 
+    # Create and run the bot
     bot = MonitorBot()
-    bot.run(token)
+    bot.run(token, log_handler=None)  # Disable discord.py's default logging
 
 if __name__ == "__main__":
     main()

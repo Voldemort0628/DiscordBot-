@@ -31,7 +31,7 @@ def is_monitor_running(user_id):
 
                 is_monitor = ('python' in proc.info['name'] and 'main.py' in cmdline)
                 has_user_id = (str(user_id) == env.get('MONITOR_USER_ID', '') or
-                             f"MONITOR_USER_ID={user_id}" in cmdline)
+                                 f"MONITOR_USER_ID={user_id}" in cmdline)
 
                 if is_monitor and has_user_id:
                     try:
@@ -59,12 +59,16 @@ class MonitorCommands(commands.Cog):
                 await ctx.send(embed=embed)
         except discord.Forbidden:
             try:
-                if content:
-                    await ctx.author.send(content)
+                await ctx.author.send(content if content else "I couldn't send a message in the channel. Please check my permissions.")
                 if embed:
                     await ctx.author.send(embed=embed)
             except discord.Forbidden:
                 logging.error(f"Could not send message to user {ctx.author.id}")
+
+    @commands.Cog.listener()
+    async def on_command(self, ctx):
+        """Log when commands are used"""
+        logging.info(f"Command '{ctx.command.name}' was triggered by {ctx.author} (ID: {ctx.author.id})")
 
     @commands.command(name='verify')
     async def verify_user(self, ctx):
@@ -230,31 +234,46 @@ class MonitorCommands(commands.Cog):
             )
             conn.commit()
 
-            # Start the monitor workflow
-            from workflows_set_run_config_tool import workflows_set_run_config_tool
-            workflow_name = f"Monitor-{user_id}"
-            workflows_set_run_config_tool(
-                name=workflow_name,
-                command=f"MONITOR_USER_ID={user_id} DISCORD_WEBHOOK_URL={webhook_url} python main.py",
-            )
+            # Start the monitor workflow with environment
+            try:
+                workflow_name = f"Monitor-{user_id}"
 
-            # Give the workflow a moment to start
-            await asyncio.sleep(2)
+                logging.info(f"Starting monitor workflow for user {user_id}")
+                logging.info(f"Webhook URL configured: {webhook_url}")
 
-            # Verify the monitor is running
-            if is_monitor_running(user_id):
-                logging.info(f"Starting monitor workflow for user {user_id} with webhook URL: {webhook_url}")
-                webhook_type = "custom" if custom_webhook else "default"
-                status_msg = [
-                    "✅ Monitor started successfully!",
-                    f"Using {webhook_type} webhook for notifications.",
-                    f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
-                    "Use !status to check monitor status.",
-                ]
-                await self.safe_send(ctx, "\n".join(status_msg))
-            else:
-                logging.error(f"Failed to start monitor for user {user_id}")
+                # Configure workflow with environment variables
+                from workflows_set_run_config_tool import workflows_set_run_config_tool
+                workflows_set_run_config_tool(
+                    name=workflow_name,
+                    command="python main.py",
+                    environment={
+                        "MONITOR_USER_ID": str(user_id),
+                        "DISCORD_WEBHOOK_URL": webhook_url
+                    }
+                )
+
+                # Give the workflow a moment to start
+                await asyncio.sleep(2)
+
+                # Verify the monitor is running
+                if is_monitor_running(user_id):
+                    logging.info(f"Monitor workflow started successfully for user {user_id}")
+                    webhook_type = "custom" if custom_webhook else "default"
+                    status_msg = [
+                        "✅ Monitor started successfully!",
+                        f"Using {webhook_type} webhook for notifications.",
+                        f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
+                        "Use !status to check monitor status.",
+                    ]
+                    await self.safe_send(ctx, "\n".join(status_msg))
+                else:
+                    logging.error(f"Failed to start monitor for user {user_id}")
+                    await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
+
+            except Exception as e:
+                logging.error(f"Error configuring monitor workflow: {e}")
                 await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
+                return
 
         except Exception as e:
             logging.error(f"Error starting monitor: {e}")
