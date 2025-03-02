@@ -17,7 +17,6 @@ logger = logging.getLogger('DiscordBot')
 
 class MonitorBot(commands.Bot):
     def __init__(self):
-        # Basic intents - only what we need
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -25,48 +24,62 @@ class MonitorBot(commands.Bot):
         super().__init__(
             command_prefix='!',
             intents=intents,
-            help_command=None  # Disable default help
+            help_command=None
         )
 
-        # Store processed message IDs to prevent duplicate handling
         self._processed_messages = set()
-
-        # API configuration
-        repl_slug = os.environ.get('REPL_SLUG', '')
-        repl_owner = os.environ.get('REPL_OWNER', '')
         self.api_base_url = (
-            f'https://{repl_slug}.{repl_owner}.repl.dev/api'
-            if repl_slug and repl_owner else
+            f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.dev/api'
+            if os.environ.get('REPL_SLUG') and os.environ.get('REPL_OWNER') else
             'http://localhost:5000/api'
         )
         self.api_key = os.environ.get('MONITOR_API_KEY')
 
-    async def process_commands(self, message):
-        """Override to prevent duplicate command processing"""
-        if message.id in self._processed_messages:
+    async def on_message(self, message):
+        """Single entry point for message processing"""
+        if message.author.bot:
             return
 
-        self._processed_messages.add(message.id)
+        msg_id = message.id
+        if msg_id in self._processed_messages:
+            logger.warning(f"Skipping duplicate message {msg_id}")
+            return
+
+        self._processed_messages.add(msg_id)
         try:
-            await super().process_commands(message)
+            await self.process_commands(message)
+        except Exception as e:
+            logger.error(f"Error processing message {msg_id}: {e}")
         finally:
-            # Clean up old message IDs periodically
             if len(self._processed_messages) > 1000:
                 self._processed_messages.clear()
 
     async def setup_hook(self):
-        """Load extensions during setup"""
-        extensions = [
-            'cogs.help',
-            'cogs.monitor_commands'
-        ]
+        """Load only necessary cogs"""
+        try:
+            logger.info("=== Bot Initialization ===")
 
-        for ext in extensions:
-            try:
-                await self.load_extension(ext)
-                logger.info(f"Loaded extension: {ext}")
-            except Exception as e:
-                logger.error(f"Failed to load extension {ext}: {e}")
+            # Remove any existing help command
+            if self.help_command:
+                self.remove_command('help')
+                logger.info("Removed default help command")
+
+            # Load help cog first
+            await self.load_extension('cogs.help')
+            logger.info("Help cog loaded")
+
+            # Load monitor commands
+            await self.load_extension('cogs.monitor_commands')
+            logger.info("Monitor commands loaded")
+
+            logger.info("=== Registered Commands ===")
+            for cmd in self.commands:
+                logger.info(f"Command: {cmd.name} in cog: {cmd.cog_name if cmd.cog else 'No Cog'}")
+            logger.info("========================")
+
+        except Exception as e:
+            logger.error(f"Error during initialization: {e}")
+            raise
 
     async def on_ready(self):
         """Called when bot is ready"""

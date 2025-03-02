@@ -7,6 +7,8 @@ import sys
 import psutil
 import time
 from datetime import datetime
+import subprocess
+import asyncio
 
 logger = logging.getLogger('MonitorCommands')
 
@@ -14,6 +16,32 @@ class MonitorCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._command_cooldowns = {}
+        logger.info("MonitorCommands cog initialized")
+
+    def cog_check(self, ctx):
+        """Ensure this cog doesn't handle help commands"""
+        is_help = ctx.command and ctx.command.name == 'help'
+        if is_help:
+            logger.debug(f"MonitorCommands cog skipping help command for message {ctx.message.id}")
+        return not is_help
+
+    @commands.Cog.listener()
+    async def on_command(self, ctx):
+        """Log non-help commands"""
+        if ctx.command and ctx.command.name != 'help':
+            logger.debug(f"MonitorCommands processing command: {ctx.command.name} for message {ctx.message.id}")
+
+    async def _check_cooldown(self, ctx):
+        """Check command cooldown"""
+        now = time.time()
+        key = f"{ctx.author.id}:{ctx.command.name}"
+        if key in self._command_cooldowns:
+            diff = now - self._command_cooldowns[key]
+            if diff < 3.0:  # 3 second cooldown
+                logger.debug(f"Command {ctx.command.name} on cooldown for user {ctx.author.id}")
+                return False
+        self._command_cooldowns[key] = now
+        return True
 
     async def _handle_db_operation(self, operation):
         """Execute database operations with proper connection handling"""
@@ -33,17 +61,6 @@ class MonitorCommands(commands.Cog):
                 cur.close()
             if conn:
                 conn.close()
-
-    async def _check_cooldown(self, ctx):
-        """Check command cooldown"""
-        now = time.time()
-        key = f"{ctx.author.id}:{ctx.command.name}"
-        if key in self._command_cooldowns:
-            diff = now - self._command_cooldowns[key]
-            if diff < 3.0:  # 3 second cooldown
-                return False
-        self._command_cooldowns[key] = now
-        return True
 
     @commands.command(name='verify')
     async def verify_user(self, ctx):
@@ -127,7 +144,7 @@ class MonitorCommands(commands.Cog):
         """Start your monitor"""
         if not await self._check_cooldown(ctx):
             return
-        
+
         async def db_start(conn, cur):
             cur.execute(
                 'SELECT id, discord_webhook_url FROM "user" WHERE discord_user_id = %s;',
@@ -288,7 +305,7 @@ class MonitorCommands(commands.Cog):
         """Add a keyword to monitor"""
         if not await self._check_cooldown(ctx):
             return
-        
+
         async def db_add_keyword(conn, cur):
             cur.execute(
                 'SELECT id FROM "user" WHERE discord_user_id = %s;',
@@ -404,7 +421,6 @@ class MonitorCommands(commands.Cog):
         embed.add_field(name="Total Preset Stores", value=str(total_stores))
         await ctx.send(embed=embed)
 
-
     @commands.command(name='add_store')
     async def add_store(self, ctx, *, store_url: str):
         """Add a store URL to monitor"""
@@ -439,7 +455,6 @@ class MonitorCommands(commands.Cog):
 
         result = await self._handle_db_operation(db_add_store)
         await ctx.send(result or "❌ Error adding store.")
-
 
     @commands.command(name='list_stores')
     async def list_stores(self, ctx):
