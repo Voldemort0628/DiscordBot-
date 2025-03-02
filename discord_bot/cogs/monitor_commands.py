@@ -16,20 +16,6 @@ class MonitorCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._command_cooldowns = {}
-        logger.info("MonitorCommands cog initialized")
-
-    def cog_check(self, ctx):
-        """Ensure this cog doesn't handle help commands"""
-        is_help = ctx.command and ctx.command.name == 'help'
-        if is_help:
-            logger.debug(f"MonitorCommands cog skipping help command for message {ctx.message.id}")
-        return not is_help
-
-    @commands.Cog.listener()
-    async def on_command(self, ctx):
-        """Log non-help commands"""
-        if ctx.command and ctx.command.name != 'help':
-            logger.debug(f"MonitorCommands processing command: {ctx.command.name} for message {ctx.message.id}")
 
     async def _check_cooldown(self, ctx):
         """Check command cooldown"""
@@ -38,29 +24,9 @@ class MonitorCommands(commands.Cog):
         if key in self._command_cooldowns:
             diff = now - self._command_cooldowns[key]
             if diff < 3.0:  # 3 second cooldown
-                logger.debug(f"Command {ctx.command.name} on cooldown for user {ctx.author.id}")
                 return False
         self._command_cooldowns[key] = now
         return True
-
-    async def _handle_db_operation(self, operation):
-        """Execute database operations with proper connection handling"""
-        conn = None
-        cur = None
-        try:
-            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-            cur = conn.cursor()
-            return await operation(conn, cur)
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            logger.error(f"Database error: {e}")
-            return None
-        finally:
-            if cur:
-                cur.close()
-            if conn:
-                conn.close()
 
     @commands.command(name='verify')
     async def verify_user(self, ctx):
@@ -550,6 +516,26 @@ class MonitorCommands(commands.Cog):
 
         except asyncio.TimeoutError:
             await ctx.send("Webhook setup timed out. Please try again.")
+
+    async def _handle_db_operation(self, operation):
+        """Execute database operations with proper connection handling"""
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+            cur = conn.cursor()
+            return await operation(conn, cur)
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Database error: {e}")
+            return None
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+
 
 async def setup(bot):
     await bot.add_cog(MonitorCommands(bot))
