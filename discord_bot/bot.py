@@ -32,7 +32,13 @@ class MonitorBot(commands.Bot):
         )
 
         # API configuration
-        self.api_base_url = os.getenv('MONITOR_API_URL', 'http://localhost:5000/api')
+        repl_slug = os.environ.get('REPL_SLUG')
+        repl_owner = os.environ.get('REPL_OWNER')
+        if repl_slug and repl_owner:
+            self.api_base_url = f'https://{repl_slug}.{repl_owner}.repl.co/api'
+        else:
+            self.api_base_url = 'http://localhost:5000/api'
+
         self.api_key = os.environ['MONITOR_API_KEY']
 
     async def setup_hook(self):
@@ -46,8 +52,15 @@ class MonitorBot(commands.Bot):
         logging.info(f'Logged in as {self.user.name} (ID: {self.user.id})')
         logging.info('------')
         logging.info(f'API URL: {self.api_base_url}')
-        logging.info('API Key configured: Yes' if self.api_key else 'No')
+        logging.info('API Key configured: Yes' if self.api_key else 'API Key missing')
         logging.info('Bot is ready to accept commands!')
+
+        # Log loaded commands
+        for command in self.commands:
+            logging.info(f'Command loaded: {command.name}')
+
+    async def on_command(self, ctx):
+        logging.info(f"Command '{ctx.command.name}' was triggered by {ctx.author} (ID: {ctx.author.id})")
 
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.errors.CommandNotFound):

@@ -350,8 +350,13 @@ def create_app():
     # Discord OAuth2 configuration
     app.config['DISCORD_CLIENT_ID'] = os.environ.get('DISCORD_CLIENT_ID')
     app.config['DISCORD_CLIENT_SECRET'] = os.environ.get('DISCORD_CLIENT_SECRET')
-    app.config['DISCORD_REDIRECT_URI'] = os.environ.get('DISCORD_REDIRECT_URI', f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.co/oauth-callback')
     app.config['DISCORD_BOT_TOKEN'] = os.environ.get('DISCORD_BOT_TOKEN')
+
+    # Set redirect URI based on environment
+    if os.environ.get('FLASK_ENV') == 'development':
+        app.config['DISCORD_REDIRECT_URI'] = 'http://localhost:5000/oauth-callback'
+    else:
+        app.config['DISCORD_REDIRECT_URI'] = f'https://{os.environ.get("REPL_SLUG")}.{os.environ.get("REPL_OWNER")}.repl.co/oauth-callback'
 
     DISCORD_AUTHORIZATION_BASE_URL = 'https://discord.com/api/oauth2/authorize'
     DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token'
