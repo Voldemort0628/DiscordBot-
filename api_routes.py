@@ -64,13 +64,12 @@ def link_discord_account():
             return jsonify({'error': 'Missing required fields'}), 400
 
         # Check if user already exists with this Discord ID
-        user = User.query.filter_by(discord_user_id=discord_user_id).first()
-
-        if user:
+        existing_user = User.query.filter_by(discord_user_id=discord_user_id).first()
+        if existing_user:
             return jsonify({
                 'message': 'Discord account already linked',
-                'user_id': user.id,
-                'username': user.username
+                'user_id': existing_user.id,
+                'username': existing_user.username
             })
 
         # Create new user
