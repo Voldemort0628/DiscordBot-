@@ -17,13 +17,23 @@ logging.basicConfig(
 
 class MonitorBot(commands.Bot):
     def __init__(self):
+        # Configure proper intents
         intents = discord.Intents.default()
         intents.message_content = True
-        super().__init__(command_prefix='!', intents=intents)
+        intents.guilds = True
+        intents.guild_messages = True
+
+        super().__init__(
+            command_prefix='!',
+            intents=intents,
+            help_command=commands.DefaultHelpCommand(
+                no_category='Monitor Commands'
+            )
+        )
 
         # API configuration
         self.api_base_url = os.getenv('MONITOR_API_URL', 'http://localhost:5000/api')
-        self.api_key = os.environ['MONITOR_API_KEY']  # This will be set by ask_secrets
+        self.api_key = os.environ['MONITOR_API_KEY']
 
     async def setup_hook(self):
         await self.load_extension('cogs.monitor_commands')
@@ -33,6 +43,7 @@ class MonitorBot(commands.Bot):
         logging.info('------')
         logging.info(f'API URL: {self.api_base_url}')
         logging.info('API Key configured: Yes' if self.api_key else 'No')
+        logging.info('Bot is ready to accept commands!')
 
 def main():
     # Set Discord token from environment variable

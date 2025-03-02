@@ -5,15 +5,8 @@ from flask_login import current_user
 import logging
 import hmac
 import hashlib
-import secrets
 
 api = Blueprint('api', __name__)
-
-# Generate a secure API key if not already set
-if not os.getenv('MONITOR_API_KEY'):
-    api_key = secrets.token_urlsafe(32)
-    os.environ['MONITOR_API_KEY'] = api_key
-    print(f"Generated new MONITOR_API_KEY: {api_key}")
 
 def verify_bot_request():
     """Verify that the request is coming from our Discord bot"""
