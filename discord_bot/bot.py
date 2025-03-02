@@ -17,7 +17,7 @@ logging.basicConfig(
 
 class MonitorBot(commands.Bot):
     def __init__(self):
-        # Configure proper intents
+        # Configure proper intents with all required permissions
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -36,7 +36,11 @@ class MonitorBot(commands.Bot):
         self.api_key = os.environ['MONITOR_API_KEY']
 
     async def setup_hook(self):
-        await self.load_extension('cogs.monitor_commands')
+        try:
+            await self.load_extension('cogs.monitor_commands')
+            logging.info("Successfully loaded monitor commands extension")
+        except Exception as e:
+            logging.error(f"Failed to load monitor commands extension: {e}")
 
     async def on_ready(self):
         logging.info(f'Logged in as {self.user.name} (ID: {self.user.id})')
@@ -44,6 +48,13 @@ class MonitorBot(commands.Bot):
         logging.info(f'API URL: {self.api_base_url}')
         logging.info('API Key configured: Yes' if self.api_key else 'No')
         logging.info('Bot is ready to accept commands!')
+
+    async def on_command_error(self, ctx, error):
+        if isinstance(error, commands.errors.CommandNotFound):
+            await ctx.send(f"Command not found. Use !help to see available commands.")
+        else:
+            logging.error(f"Command error: {error}")
+            await ctx.send(f"An error occurred while processing the command: {str(error)}")
 
 def main():
     # Set Discord token from environment variable

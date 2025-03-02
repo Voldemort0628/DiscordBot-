@@ -12,24 +12,31 @@ class MonitorCommands(commands.Cog):
     async def status(self, ctx):
         """Check the status of your monitor"""
         try:
+            logging.info(f"Status command received from user {ctx.author.id}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"{self.bot.api_base_url}/status",
-                    headers={'X-API-Key': self.bot.api_key}
+                    headers={'X-API-Key': self.bot.api_key},
+                    params={'user_id': ctx.author.id}
                 ) as resp:
+                    logging.info(f"Status API response: {resp.status}")
                     if resp.status == 200:
                         data = await resp.json()
                         embed = discord.Embed(
                             title="Monitor Status",
                             color=discord.Color.green() if data['running'] else discord.Color.red()
                         )
-                        embed.add_field(name="Status", value="Running" if data['running'] else "Stopped")
+                        embed.add_field(name="Status", value="✅ Running" if data['running'] else "❌ Stopped")
+                        embed.add_field(name="User", value=data['username'])
                         await ctx.send(embed=embed)
+                    elif resp.status == 404:
+                        await ctx.send("❌ Error: Your Discord account is not registered with the monitor.")
                     else:
-                        await ctx.send("Failed to fetch monitor status")
+                        error_data = await resp.json()
+                        await ctx.send(f"❌ Error checking monitor status: {error_data.get('error', 'Unknown error')}")
         except Exception as e:
             logging.error(f"Error checking status: {e}")
-            await ctx.send("Error checking monitor status")
+            await ctx.send("❌ Error checking monitor status. Please try again later.")
 
     @commands.command(name='start')
     async def start_monitor(self, ctx):
@@ -38,7 +45,8 @@ class MonitorCommands(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.bot.api_base_url}/start",
-                    headers={'X-API-Key': self.bot.api_key}
+                    headers={'X-API-Key': self.bot.api_key},
+                    json={'user_id': ctx.author.id}
                 ) as resp:
                     if resp.status == 200:
                         await ctx.send("Monitor started successfully!")
@@ -55,7 +63,8 @@ class MonitorCommands(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.bot.api_base_url}/stop",
-                    headers={'X-API-Key': self.bot.api_key}
+                    headers={'X-API-Key': self.bot.api_key},
+                    json={'user_id': ctx.author.id}
                 ) as resp:
                     if resp.status == 200:
                         await ctx.send("Monitor stopped successfully!")
@@ -72,7 +81,8 @@ class MonitorCommands(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"{self.bot.api_base_url}/keywords",
-                    headers={'X-API-Key': self.bot.api_key}
+                    headers={'X-API-Key': self.bot.api_key},
+                    params={'user_id': ctx.author.id}
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
@@ -101,7 +111,7 @@ class MonitorCommands(commands.Cog):
                 async with session.post(
                     f"{self.bot.api_base_url}/keywords",
                     headers={'X-API-Key': self.bot.api_key},
-                    json={'word': keyword}
+                    json={'user_id': ctx.author.id, 'word': keyword}
                 ) as resp:
                     if resp.status == 200:
                         await ctx.send(f"Added keyword: {keyword}")
@@ -119,7 +129,7 @@ class MonitorCommands(commands.Cog):
                 async with session.delete(
                     f"{self.bot.api_base_url}/keywords",
                     headers={'X-API-Key': self.bot.api_key},
-                    json={'word': keyword}
+                    json={'user_id': ctx.author.id, 'word': keyword}
                 ) as resp:
                     if resp.status == 200:
                         await ctx.send(f"Removed keyword: {keyword}")

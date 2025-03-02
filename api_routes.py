@@ -26,15 +26,23 @@ def get_status():
     try:
         user_id = request.args.get('user_id', type=int)
         if not user_id:
+            logging.error("Status request missing user_id")
             return jsonify({'error': 'User ID required'}), 400
 
         user = User.query.get(user_id)
         if not user:
+            logging.error(f"Status request for non-existent user {user_id}")
             return jsonify({'error': 'User not found'}), 404
 
+        # Check if monitor is running using app.py's is_monitor_running function
+        from app import is_monitor_running
+        is_running = is_monitor_running(user_id)
+
+        logging.info(f"Status request for user {user_id}: running={is_running}")
         return jsonify({
-            'running': user.enabled,
-            'user_id': user.id
+            'running': is_running,
+            'user_id': user.id,
+            'username': user.username
         })
     except Exception as e:
         logging.error(f"Error in status endpoint: {e}")
