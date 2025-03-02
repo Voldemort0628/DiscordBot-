@@ -7,12 +7,20 @@ from datetime import datetime
 from pathlib import Path
 
 # Early environment check logging
-print("=== Monitor Starting ===")
-print(f"Environment variables:")
-print(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
-print(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
-print(f"Command line args: {sys.argv}")
-print("=====================")
+logging.info("=== Monitor Starting ===")
+logging.info(f"Environment variables:")
+logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+logging.info(f"Command line args: {sys.argv}")
+logging.info("=====================")
+
+if not os.environ.get('MONITOR_USER_ID'):
+    logging.error("Missing required environment variables: MONITOR_USER_ID")
+    logging.error("Current environment:")
+    logging.error(f"MONITOR_USER_ID: Not set")
+    logging.error(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+    logging.error(f"Command line args: {sys.argv}")
+    sys.exit(1)
 
 from typing import Dict, List, Set
 import time

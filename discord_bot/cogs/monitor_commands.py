@@ -8,6 +8,8 @@ import psutil
 import subprocess
 import asyncio
 import time
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(
@@ -19,44 +21,46 @@ logging.basicConfig(
     ]
 )
 
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1345624968070824099/41_PR3u7Q9zTTnClsoiYLuDGQ7vMmXwfALNMLGlHDGVo5OU7dmi13D8fvM-_-uLWmFDz"
-
-def is_monitor_running(user_id):
-    """Check if a specific user's monitor is running"""
-    try:
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
-            try:
-                cmdline = ' '.join(proc.info['cmdline'] or [])
-                env = proc.info['environ']
-
-                is_monitor = ('python' in proc.info['name'] and 'main.py' in cmdline)
-                has_user_id = (str(user_id) == env.get('MONITOR_USER_ID', '') or
-                             f"MONITOR_USER_ID={user_id}" in cmdline)
-
-                if is_monitor and has_user_id:
-                    try:
-                        proc.status()  # Will raise if process is dead
-                        return True
-                    except (psutil.NoSuchProcess, psutil.ZombieProcess):
-                        continue
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    except Exception as e:
-        logging.error(f"Error checking monitor status: {e}")
-    return False
-
 class MonitorCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._last_command_time = defaultdict(float)  # Track last command time per user
+        self._command_cooldown = 3.0  # Cooldown between commands (seconds)
+        self._rate_limit_notified = set()  # Track users who've been notified of rate limits
         logging.info("MonitorCommands cog initialized")
 
+    async def handle_rate_limit(self, ctx):
+        """Handle rate limiting for commands"""
+        current_time = time.time()
+        user_id = ctx.author.id
+
+        # Check if user is rate limited
+        if user_id in self._last_command_time:
+            time_since_last = current_time - self._last_command_time[user_id]
+            if time_since_last < self._command_cooldown:
+                # Only notify once about rate limiting
+                if user_id not in self._rate_limit_notified:
+                    await ctx.send(f"⚠️ Please wait a moment before using commands again.")
+                    self._rate_limit_notified.add(user_id)
+                return True
+
+        # Reset rate limit notification state and update last command time
+        self._rate_limit_notified.discard(user_id)
+        self._last_command_time[user_id] = current_time
+        return False
+
     async def safe_send(self, ctx, content=None, embed=None):
-        """Safely send a message, falling back to DM if channel send fails"""
+        """Safely send a message with improved rate limiting"""
         try:
+            message = None
             if content:
-                await ctx.send(content)
+                message = await ctx.send(content)
             if embed:
-                await ctx.send(embed=embed)
+                if message:
+                    await message.edit(embed=embed)
+                else:
+                    message = await ctx.send(embed=embed)
+            return message
         except discord.Forbidden:
             try:
                 if content:
@@ -65,10 +69,17 @@ class MonitorCommands(commands.Cog):
                     await ctx.author.send(embed=embed)
             except discord.Forbidden:
                 logging.error(f"Could not send message to user {ctx.author.id}")
+        except discord.HTTPException as e:
+            if e.code == 429:  # Rate limit error
+                await asyncio.sleep(2)  # Wait before retrying
+                return await self.safe_send(ctx, content, embed)
+            raise
 
     @commands.command(name='verify')
     async def verify_user(self, ctx):
         """Verify yourself to use the monitor"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             logging.info(f"Verify command received from user {ctx.author.id}")
 
@@ -152,6 +163,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='status')
     async def check_status(self, ctx):
         """Check your monitor status"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -188,6 +201,10 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='start')
     async def start_monitor(self, ctx):
         """Start your monitor"""
+        # Check rate limiting first
+        if await self.handle_rate_limit(ctx):
+            return
+
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -215,13 +232,16 @@ class MonitorCommands(commands.Cog):
                 await self.safe_send(ctx, "❌ You need to add some stores first! Use `!preset_stores` to add our curated list of stores, or `!add_store` to add your own.")
                 return
 
-            # Check if monitor is already running
+            # Prevent multiple start attempts
             if is_monitor_running(user_id):
                 await self.safe_send(ctx, "Monitor is already running!")
                 return
 
+            # Send initial status message
+            status_message = await self.safe_send(ctx, "⌛ Starting monitor, please wait...")
+
             # Use custom webhook if set, otherwise use preset webhook
-            webhook_url = custom_webhook if custom_webhook else DISCORD_WEBHOOK_URL
+            webhook_url = custom_webhook if custom_webhook else os.environ.get('DISCORD_WEBHOOK_URL')
 
             # Enable user in database
             cur.execute(
@@ -230,35 +250,50 @@ class MonitorCommands(commands.Cog):
             )
             conn.commit()
 
-            # Start the monitor workflow
-            from workflows_set_run_config_tool import workflows_set_run_config_tool
-            workflow_name = f"Monitor-{user_id}"
-            workflows_set_run_config_tool(
-                name=workflow_name,
-                command=f"MONITOR_USER_ID={user_id} DISCORD_WEBHOOK_URL={webhook_url} python main.py",
+            # Start the monitor using start_monitor.py
+            start_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'start_monitor.py')
+
+            # Set environment for the monitor process
+            process_env = os.environ.copy()
+            process_env['DISCORD_WEBHOOK_URL'] = webhook_url
+            process_env['MONITOR_USER_ID'] = str(user_id)
+
+            process = subprocess.Popen(
+                [sys.executable, start_script, str(user_id)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                env=process_env
             )
 
-            # Give the workflow a moment to start
-            await asyncio.sleep(2)
+            # Give the process time to start and verify with retries
+            max_retries = 3
+            for retry in range(max_retries):
+                await asyncio.sleep(2)
 
-            # Verify the monitor is running
-            if is_monitor_running(user_id):
-                logging.info(f"Starting monitor workflow for user {user_id} with webhook URL: {webhook_url}")
-                webhook_type = "custom" if custom_webhook else "default"
-                status_msg = [
-                    "✅ Monitor started successfully!",
-                    f"Using {webhook_type} webhook for notifications.",
-                    f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
-                    "Use !status to check monitor status.",
-                ]
-                await self.safe_send(ctx, "\n".join(status_msg))
-            else:
-                logging.error(f"Failed to start monitor for user {user_id}")
-                await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
+                if is_monitor_running(user_id):
+                    webhook_type = "custom" if custom_webhook else "default"
+                    success_msg = [
+                        "✅ Monitor started successfully!",
+                        f"Using {webhook_type} webhook for notifications.",
+                        f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
+                        "Use !status to check monitor status."
+                    ]
+                    await status_message.edit(content="\n".join(success_msg))
+                    return
+                elif retry < max_retries - 1:
+                    await status_message.edit(content=f"⌛ Starting monitor (attempt {retry + 1}/{max_retries})...")
+
+            # If we get here, the monitor failed to start
+            await status_message.edit(content="❌ Failed to start monitor. Please try again later.")
 
         except Exception as e:
             logging.error(f"Error starting monitor: {e}")
-            await self.safe_send(ctx, "❌ Error starting monitor. Please try again later.")
+            error_msg = "❌ Error starting monitor. Please try again later."
+            if 'status_message' in locals():
+                await status_message.edit(content=error_msg)
+            else:
+                await self.safe_send(ctx, error_msg)
         finally:
             if 'cur' in locals(): cur.close()
             if 'conn' in locals(): conn.close()
@@ -266,6 +301,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='stop')
     async def stop_monitor(self, ctx):
         """Stop your monitor"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -324,6 +361,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='keywords')
     async def list_keywords(self, ctx):
         """List your keywords"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -364,6 +403,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='add_keyword')
     async def add_keyword(self, ctx, *, keyword: str):
         """Add a keyword to monitor"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -407,6 +448,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='remove_keyword')
     async def remove_keyword(self, ctx, *, keyword: str):
         """Remove a keyword from your monitor"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -446,6 +489,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='preset_stores')
     async def preset_stores(self, ctx):
         """Show and enable preset stores to monitor"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -510,6 +555,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='add_store')
     async def add_store(self, ctx, *, store_url: str):
         """Add a store URL to monitor"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             # Basic URL validation
             if not store_url.startswith(('http://', 'https://')):
@@ -557,6 +604,8 @@ class MonitorCommands(commands.Cog):
     @commands.command(name='list_stores')
     async def list_stores(self, ctx):
         """List all your active stores"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
@@ -612,10 +661,11 @@ class MonitorCommands(commands.Cog):
             if 'cur' in locals(): cur.close()
             if 'conn' in locals(): conn.close()
 
-
     @commands.command(name='set_webhook')
     async def set_webhook(self, ctx):
         """Set your custom Discord webhook URL (via DM only)"""
+        if await self.handle_rate_limit(ctx):
+            return
         try:
             # This command should only work in DMs
             if not isinstance(ctx.channel, discord.DMChannel):
@@ -668,6 +718,30 @@ class MonitorCommands(commands.Cog):
         finally:
             if 'cur' in locals(): cur.close()
             if 'conn' in locals(): conn.close()
+
+def is_monitor_running(user_id):
+    """Check if a specific user's monitor is running"""
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
+            try:
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                env = proc.info['environ']
+
+                is_monitor = ('python' in proc.info['name'] and 'main.py' in cmdline)
+                has_user_id = (str(user_id) == env.get('MONITOR_USER_ID', '') or
+                             f"MONITOR_USER_ID={user_id}" in cmdline)
+
+                if is_monitor and has_user_id:
+                    try:
+                        proc.status()  # Will raise if process is dead
+                        return True
+                    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                        continue
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception as e:
+        logging.error(f"Error checking monitor status: {e}")
+    return False
 
 async def setup(bot):
     await bot.add_cog(MonitorCommands(bot))
