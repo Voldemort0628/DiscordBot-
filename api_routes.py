@@ -1,6 +1,6 @@
 import os
 from flask import Blueprint, jsonify, request
-from models import db, User, Keyword
+from models import db, User, Keyword, MonitorConfig # Added MonitorConfig import
 from flask_login import current_user
 import logging
 import hmac
@@ -63,11 +63,29 @@ def link_discord_account():
         if not all([username, password, discord_user_id]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        user = User.query.filter_by(username=username).first()
-        if not user or not user.check_password(password):
-            return jsonify({'error': 'Invalid username or password'}), 401
+        # Check if user already exists with this Discord ID
+        user = User.query.filter_by(discord_user_id=discord_user_id).first()
 
-        user.discord_user_id = discord_user_id
+        if user:
+            return jsonify({
+                'message': 'Discord account already linked',
+                'user_id': user.id,
+                'username': user.username
+            })
+
+        # Create new user
+        user = User(
+            username=username,
+            discord_user_id=discord_user_id,
+            enabled=True
+        )
+        user.set_password(password)
+
+        # Add default monitor configuration
+        config = MonitorConfig(user_id=user.id)
+
+        db.session.add(user)
+        db.session.add(config)
         db.session.commit()
 
         return jsonify({

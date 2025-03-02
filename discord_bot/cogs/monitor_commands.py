@@ -3,6 +3,7 @@ from discord.ext import commands
 import logging
 import aiohttp
 from typing import Optional
+import secrets
 
 class MonitorCommands(commands.Cog):
     def __init__(self, bot):
@@ -158,6 +159,39 @@ class MonitorCommands(commands.Cog):
         except Exception as e:
             logging.error(f"Error providing login link: {e}")
             await ctx.send("❌ Error generating login link. Please try again later.")
+
+    @commands.command(name='verify')
+    async def verify_user(self, ctx):
+        """Verify yourself to use the monitor"""
+        try:
+            logging.info(f"Verify command received from user {ctx.author.id}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.bot.api_base_url}/link_discord",
+                    headers={'X-API-Key': self.bot.api_key},
+                    json={
+                        'username': f"discord_{ctx.author.name}",
+                        'password': secrets.token_urlsafe(32),  # Generate secure random password
+                        'discord_user_id': str(ctx.author.id)
+                    }
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        embed = discord.Embed(
+                            title="✅ Verification Successful",
+                            description="Your Discord account has been verified and linked to the monitor.",
+                            color=discord.Color.green()
+                        )
+                        embed.add_field(name="Username", value=data['username'])
+                        await ctx.send(embed=embed)
+                    elif resp.status == 401:
+                        await ctx.send("❌ Invalid verification attempt. Please try again.")
+                    else:
+                        error_data = await resp.json()
+                        await ctx.send(f"❌ Error during verification: {error_data.get('error', 'Unknown error')}")
+        except Exception as e:
+            logging.error(f"Error verifying user: {e}")
+            await ctx.send("❌ Error during verification. Please try again later.")
 
 
 async def setup(bot):
