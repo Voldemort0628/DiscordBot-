@@ -148,16 +148,13 @@ class MonitorCommands(commands.Cog):
             # Get base URL from API URL but remove /api suffix
             base_url = self.bot.api_base_url.replace('/api', '')
 
-            embed = discord.Embed(
-                title="Link Your Discord Account",
-                description=(
-                    "Click the link below to connect your Discord account with the monitor:\n"
-                    f"🔗 [Login with Discord]({base_url}/discord-login)"
-                ),
-                color=discord.Color.blue()
+            # Create a simple text message
+            login_message = (
+                "**Link Your Discord Account**\n"
+                "Click the link below to connect your Discord account with the monitor:\n"
+                f"{base_url}/discord-login"
             )
-            embed.set_footer(text="This link will securely connect your Discord account")
-            await ctx.send(embed=embed)
+            await ctx.send(login_message)
         except Exception as e:
             logging.error(f"Error providing login link: {e}")
             await ctx.send("❌ Error generating login link. Please try again later.")
