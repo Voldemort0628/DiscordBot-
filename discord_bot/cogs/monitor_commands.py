@@ -54,15 +54,21 @@ class MonitorCommands(commands.Cog):
         if not await self._check_cooldown(ctx):
             return
 
+        logger.info(f"Starting verification for user {ctx.author.name} (ID: {ctx.author.id})")
+
         async def db_verify(conn, cur):
+            # Check if user already exists
             cur.execute('SELECT username FROM "user" WHERE discord_user_id = %s', (str(ctx.author.id),))
             if cur.fetchone():
+                logger.info(f"User {ctx.author.name} already verified")
                 return "✅ Your account is already verified!"
 
             username = f"discord_{ctx.author.name}"
             # Create user with random password
             password = secrets.token_urlsafe(32)
             password_hash = generate_password_hash(password)
+
+            logger.info(f"Creating new user: {username}")
 
             cur.execute(
                 'INSERT INTO "user" (username, discord_user_id, enabled, password_hash) VALUES (%s, %s, true, %s) RETURNING id',
@@ -78,10 +84,17 @@ class MonitorCommands(commands.Cog):
                 (user_id,)
             )
             conn.commit()
+            logger.info(f"Successfully created user {username} with ID {user_id}")
             return "✅ Verification successful! You can now use monitor commands."
 
-        result = await self._handle_db_operation(db_verify)
-        await ctx.send(result or "❌ Error during verification")
+        try:
+            result = await self._handle_db_operation(db_verify)
+            await ctx.send(result or "❌ Error during verification")
+            if "Error" in str(result):
+                logger.error(f"Verification failed for {ctx.author.name}: {result}")
+        except Exception as e:
+            logger.error(f"Unexpected error during verification for {ctx.author.name}: {e}")
+            await ctx.send("❌ An unexpected error occurred during verification. Please try again.")
 
     @commands.command(name='status', help="Check your monitor status")
     async def check_status(self, ctx):
@@ -117,15 +130,25 @@ class MonitorCommands(commands.Cog):
     def _is_monitor_running(self, user_id):
         """Check if monitor is running for user"""
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
                 try:
+                    # Check both environment variable and command line
+                    env = proc.info.get('environ', {})
                     cmdline = ' '.join(proc.info['cmdline'] or [])
-                    if ('python' in proc.info['name'] and 
-                        'main.py' in cmdline and 
-                        f"MONITOR_USER_ID={user_id}" in cmdline):
+
+                    is_python = 'python' in proc.info['name'].lower()
+                    is_monitor = ('main.py' in cmdline or 'start_monitor.py' in cmdline)
+                    has_user_id = (
+                        f"MONITOR_USER_ID={user_id}" in cmdline or
+                        env.get('MONITOR_USER_ID') == str(user_id)
+                    )
+
+                    if is_python and is_monitor and has_user_id:
+                        logger.info(f"Found monitor process for user {user_id}: PID {proc.pid}")
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
+            logger.info(f"No monitor process found for user {user_id}")
             return False
         except Exception as e:
             logger.error(f"Error checking monitor status: {e}")

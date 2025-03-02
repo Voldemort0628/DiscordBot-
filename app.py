@@ -15,15 +15,26 @@ from requests_oauthlib import OAuth2Session
 def is_monitor_running(user_id):
     """Check if a specific user's monitor is running"""
     try:
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            cmdline = ' '.join(proc.info['cmdline'] or [])
-            if ('python' in proc.info['name'] and 
-                'main.py' in cmdline and 
-                f"MONITOR_USER_ID={user_id}" in cmdline):
-                return True
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
+            try:
+                # Check both environment variable and command line
+                env = proc.info.get('environ', {})
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+
+                is_python = 'python' in proc.info['name'].lower()
+                is_monitor = ('main.py' in cmdline or 'start_monitor.py' in cmdline)
+                has_user_id = (
+                    f"MONITOR_USER_ID={user_id}" in cmdline or
+                    env.get('MONITOR_USER_ID') == str(user_id)
+                )
+
+                if is_python and is_monitor and has_user_id:
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
     except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
-    return False
+        return False
 
 def create_app():
     app = Flask(__name__)
@@ -329,18 +340,24 @@ def create_app():
                 env['DISCORD_WEBHOOK_URL'] = current_user.discord_webhook_url
                 env['MONITOR_USER_ID'] = str(current_user.id)  # Set environment variable explicitly
 
-                # Use start_new_session to ensure the monitor runs independently
+                # Start using start_monitor.py which handles logging and process management
                 process = subprocess.Popen(
                     ['python', 'start_monitor.py', str(current_user.id)],
                     env=env,
-                    start_new_session=True
+                    start_new_session=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True
                 )
 
                 time.sleep(1)  # Brief pause to allow process to start
                 if is_monitor_running(current_user.id):
                     flash('Monitor started successfully')
                 else:
-                    flash('Failed to start monitor. Check logs for details.', 'error')
+                    # Check process output for errors
+                    output, _ = process.communicate(timeout=2)
+                    error_msg = output.strip() if output else "Unknown error"
+                    flash(f'Failed to start monitor. Error: {error_msg}', 'error')
 
             return redirect(url_for('dashboard'))
         except Exception as e:
