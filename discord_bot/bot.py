@@ -32,8 +32,13 @@ class MonitorBot(commands.Bot):
         )
 
         # API configuration
-        repl_slug = os.environ.get('REPL_SLUG')
-        repl_owner = os.environ.get('REPL_OWNER')
+        repl_slug = os.environ.get('REPL_SLUG', '')
+        repl_owner = os.environ.get('REPL_OWNER', '')
+
+        # Log the Replit environment details
+        logging.info(f"REPL_SLUG: {repl_slug}")
+        logging.info(f"REPL_OWNER: {repl_owner}")
+
         if repl_slug and repl_owner:
             self.api_base_url = f'https://{repl_slug}.{repl_owner}.repl.co/api'
         else:
