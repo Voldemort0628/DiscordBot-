@@ -1,0 +1,24 @@
+=== Monitor Start: 2025-03-02 17:43:57.641819 ===
+Environment:
+- MONITOR_USER_ID: 12
+- DISCORD_WEBHOOK_URL: Set
+Monitor started with PID: 32141
+ Monitor started with PID: 32141
+2025-03-02 17:43:59,642 - INFO - 2025-03-02 17:43:59,367 - INFO - === Monitor Starting ===
+2025-03-02 17:43:59,743 - INFO - 2025-03-02 17:43:59,367 - INFO - Environment variables:
+2025-03-02 17:43:59,843 - INFO - 2025-03-02 17:43:59,367 - INFO - MONITOR_USER_ID: 12
+2025-03-02 17:43:59,943 - INFO - 2025-03-02 17:43:59,367 - INFO - DISCORD_WEBHOOK_URL: Set
+2025-03-02 17:44:00,044 - INFO - 2025-03-02 17:43:59,368 - INFO - Command line args: ['main.py']
+2025-03-02 17:44:00,144 - INFO - 2025-03-02 17:43:59,368 - INFO - =====================
+2025-03-02 17:44:00,244 - INFO - 2025-03-02 17:43:59,368 - INFO - Got user ID from environment: 12
+2025-03-02 17:44:00,345 - INFO - 2025-03-02 17:43:59,368 - INFO - Starting monitor with configuration:
+2025-03-02 17:44:00,445 - INFO - 2025-03-02 17:43:59,369 - INFO - - User ID: 12
+2025-03-02 17:44:00,545 - INFO - 2025-03-02 17:43:59,369 - INFO - - Webhook URL configured: Yes
+2025-03-02 17:44:00,645 - INFO - 2025-03-02 17:43:59,369 - INFO - - Monitor uptime: 0.00 seconds
+2025-03-02 17:44:00,746 - INFO - 2025-03-02 17:43:59,526 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 17:44:00,846 - INFO - 2025-03-02 17:43:59,526 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 17:44:00,947 - INFO - 2025-03-02 17:43:59,532 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 17:44:01,047 - INFO - 2025-03-02 17:43:59,532 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 17:44:01,147 - INFO - 2025-03-02 17:43:59,832 - INFO - Monitor heartbeat - User 12 - Active and running
+2025-03-02 17:44:02,837 - INFO - 2025-03-02 17:44:02,836 - ERROR - User 12 not found or disabled
+2025-03-02 17:44:03,100 - INFO - Monitor process ended

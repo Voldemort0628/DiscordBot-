@@ -24,17 +24,25 @@ def start_monitor(user_id):
 
     logging.info(f"Starting monitor for user ID: {user_id}")
     logging.info(f"Logs will be saved to: {log_file}")
+    logging.info(f"Current working directory: {os.getcwd()}")
 
     # Verify required environment variables
-    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
-    if not webhook_url:
-        logging.error("Missing DISCORD_WEBHOOK_URL environment variable")
+    required_env_vars = ['DISCORD_WEBHOOK_URL', 'MONITOR_USER_ID']
+    missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+    if missing_vars:
+        logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        return 1
+
+    # Verify environment matches user_id
+    env_user_id = os.environ.get('MONITOR_USER_ID')
+    if str(user_id) != env_user_id:
+        logging.error(f"User ID mismatch: argument={user_id}, environment={env_user_id}")
         return 1
 
     # Set environment variables for better debugging
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    env["MONITOR_USER_ID"] = str(user_id)  # Ensure user_id is set in environment
+    env["MONITOR_USER_ID"] = str(user_id)
 
     # Create a process tracking file
     process_info = {
@@ -43,25 +51,31 @@ def start_monitor(user_id):
         "log_file": log_file
     }
     tracking_file = f"monitor_process_{user_id}.json"
-    with open(tracking_file, "w") as f:
-        json.dump(process_info, f)
 
-    logging.info("Environment variables set:")
+    try:
+        with open(tracking_file, "w") as f:
+            json.dump(process_info, f)
+    except Exception as e:
+        logging.error(f"Failed to create tracking file: {e}")
+        return 1
+
+    logging.info("Environment variables verified:")
     logging.info(f"- MONITOR_USER_ID: {env.get('MONITOR_USER_ID')}")
     logging.info(f"- DISCORD_WEBHOOK_URL: {'Set' if env.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
     logging.info(f"- Process tracking file: {tracking_file}")
 
-    # Start the monitor process with log file
-    with open(log_file, "w") as log:
-        log.write(f"=== Monitor Start: {datetime.datetime.now()} ===\n")
-        log.write(f"Environment:\n")
-        log.write(f"- MONITOR_USER_ID: {env.get('MONITOR_USER_ID')}\n")
-        log.write(f"- DISCORD_WEBHOOK_URL: {'Set' if env.get('DISCORD_WEBHOOK_URL') else 'Not set'}\n")
-        log.flush()
+    # Locate main.py
+    main_script = os.path.abspath(os.path.join(os.getcwd(), "main.py"))
+    if not os.path.exists(main_script):
+        logging.error(f"Cannot find main.py at {main_script}")
+        return 1
 
+    logging.info(f"Found main.py at: {main_script}")
+
+    try:
         # Start the monitor process
         monitor_process = subprocess.Popen(
-            [sys.executable, "main.py"],  # Don't pass user_id as argument, use env var
+            [sys.executable, main_script],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -71,29 +85,25 @@ def start_monitor(user_id):
         )
 
         logging.info(f"Monitor started with PID: {monitor_process.pid}")
-        log.write(f"Monitor started with PID: {monitor_process.pid}\n")
-        log.flush()
 
         # Update tracking file with PID
         process_info["pid"] = monitor_process.pid
         with open(tracking_file, "w") as f:
             json.dump(process_info, f)
 
-    # Give the process a moment to start
-    time.sleep(2)
+        # Give the process a moment to start
+        time.sleep(2)
 
-    # Check if process is still running
-    if monitor_process.poll() is not None:
-        logging.error("Monitor process failed to start")
-        # Clean up tracking file
-        try:
-            os.remove(tracking_file)
-        except OSError:
-            pass
-        return 1
+        # Check if process is still running
+        if monitor_process.poll() is not None:
+            logging.error("Monitor process failed to start")
+            logging.error(f"Process exit code: {monitor_process.returncode}")
+            if monitor_process.stdout:
+                error_output = monitor_process.stdout.read()
+                logging.error(f"Process output: {error_output}")
+            return 1
 
-    # Stream output in real-time
-    try:
+        # Stream output in real-time
         while True:
             output = monitor_process.stdout.readline()
             if output:
@@ -108,14 +118,10 @@ def start_monitor(user_id):
                     logging.info(remaining_output.strip())
                 break
             time.sleep(0.1)
-    except KeyboardInterrupt:
-        logging.info("Stopping monitor...")
-        monitor_process.terminate()
-        try:
-            monitor_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            monitor_process.kill()
-            logging.info("Monitor process killed")
+
+    except Exception as e:
+        logging.error(f"Error running monitor: {e}")
+        return 1
     finally:
         # Clean up tracking file
         try:

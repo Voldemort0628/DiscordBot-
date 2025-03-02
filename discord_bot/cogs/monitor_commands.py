@@ -163,7 +163,7 @@ class MonitorCommands(commands.Cog):
                                     logger.info(f"Process {pid} found running. Command line: {cmdline}")
                                     logger.info(f"Process environment: MONITOR_USER_ID={env.get('MONITOR_USER_ID')}")
 
-                                    if ('python' in process.name().lower() and 
+                                    if ('python' in process.name().lower() and
                                         ('main.py' in cmdline or 'start_monitor.py' in cmdline)):
                                         logger.info(f"✓ Confirmed monitor process for user {user_id} with PID {pid}")
                                         return True
@@ -293,42 +293,85 @@ class MonitorCommands(commands.Cog):
         user_id, webhook_url, store_count = result
 
         status_message = await ctx.send("⌛ Starting monitor, please wait...")
-        start_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'start_monitor.py')
+
+        # Get the absolute path to start_monitor.py relative to this file
+        start_script = os.path.abspath(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            'start_monitor.py'
+        ))
+        main_script = os.path.abspath(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            'main.py'
+        ))
+
+        # Verify files exist
+        if not os.path.exists(start_script):
+            logger.error(f"Cannot find start_monitor.py at {start_script}")
+            await status_message.edit(content="❌ Error: start_monitor.py not found")
+            return
+        if not os.path.exists(main_script):
+            logger.error(f"Cannot find main.py at {main_script}")
+            await status_message.edit(content="❌ Error: main.py not found")
+            return
+
+        logger.info(f"Starting monitor for user {user_id}")
+        logger.info(f"start_monitor.py path: {start_script}")
+        logger.info(f"main.py path: {main_script}")
+        logger.info(f"Current working directory: {os.getcwd()}")
+
+        # Setup environment
         process_env = os.environ.copy()
         process_env['DISCORD_WEBHOOK_URL'] = webhook_url
         process_env['MONITOR_USER_ID'] = str(user_id)
+        process_env['PYTHONUNBUFFERED'] = '1'  # Ensure Python output is not buffered
 
-        logger.info(f"Starting monitor for user {user_id} with environment: MONITOR_USER_ID={user_id}")
+        # Start the monitor process
+        try:
+            process = subprocess.Popen(
+                [sys.executable, start_script, str(user_id)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=process_env,
+                start_new_session=True,
+                cwd=os.path.dirname(start_script)  # Set working directory to where the scripts are
+            )
 
-        process = subprocess.Popen(
-            [sys.executable, start_script, str(user_id)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=process_env,
-            start_new_session=True
-        )
+            logger.info(f"Started process with PID {process.pid}")
 
-        max_retries = 3
-        for retry in range(max_retries):
-            await asyncio.sleep(2)
-            if self._is_monitor_running(user_id):
-                success_msg = [
-                    "✅ Monitor started successfully!",
-                    f"Using {'custom' if webhook_url != os.environ.get('DISCORD_WEBHOOK_URL') else 'default'} webhook.",
-                    f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
-                    "Use !status to check monitor status."
-                ]
-                await status_message.edit(content="\n".join(success_msg))
+            # Give the process a moment to start and check its status
+            time.sleep(2)
+            if process.poll() is not None:
+                error_output = process.stdout.read() if process.stdout else "No error output available"
+                logger.error(f"Process failed immediately. Exit code: {process.returncode}")
+                logger.error(f"Process output: {error_output}")
+                await status_message.edit(content=f"❌ Monitor failed to start. Exit code: {process.returncode}")
                 return
-            elif retry < max_retries - 1:
-                await status_message.edit(content=f"⌛ Starting monitor (attempt {retry + 1}/{max_retries})...")
 
-        # If we get here, the monitor failed to start
-        error_output = process.stdout.read() if process.stdout else "No error output available"
-        logger.error(f"Failed to start monitor for user {user_id}. Error output: {error_output}")
-        await status_message.edit(content="❌ Failed to start monitor. Please try again later.")
+            # Verify the process is actually running
+            retries = 3
+            for attempt in range(retries):
+                if self._is_monitor_running(user_id):
+                    success_msg = [
+                        "✅ Monitor started successfully!",
+                        f"Using {'custom' if webhook_url != os.environ.get('DISCORD_WEBHOOK_URL') else 'default'} webhook.",
+                        f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
+                        "Use !status to check monitor status."
+                    ]
+                    await status_message.edit(content="\n".join(success_msg))
+                    return
+                logger.info(f"Waiting for monitor to start (attempt {attempt + 1}/{retries})")
+                time.sleep(2)
+
+            # If we get here, the monitor didn't start properly
+            error_output = process.stdout.read() if process.stdout else "No error output available"
+            logger.error(f"Monitor process failed to initialize properly. Output: {error_output}")
+            await status_message.edit(content="❌ Monitor failed to initialize. Please check the logs.")
+
+        except Exception as e:
+            logger.error(f"Error starting monitor process: {e}")
+            await status_message.edit(content=f"❌ Error starting monitor: {str(e)}")
 
     @commands.command(name='stop', help="Stop your monitor")
     async def stop_monitor(self, ctx):
