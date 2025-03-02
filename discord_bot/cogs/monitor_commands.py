@@ -196,7 +196,7 @@ class MonitorCommands(commands.Cog):
             conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             cur = conn.cursor()
 
-            # Get user_id and webhook URL
+            # Get user information
             cur.execute(
                 'SELECT id, discord_webhook_url FROM "user" WHERE discord_user_id = %s;',
                 (str(ctx.author.id),)
@@ -208,6 +208,11 @@ class MonitorCommands(commands.Cog):
 
             user_id, custom_webhook = result
 
+            # Check if monitor is already running
+            if is_monitor_running(user_id):
+                await self.safe_send(ctx, "Monitor is already running!")
+                return
+
             # Check if user has any stores configured
             cur.execute(
                 'SELECT COUNT(*) FROM store WHERE user_id = %s AND enabled = true;',
@@ -216,12 +221,7 @@ class MonitorCommands(commands.Cog):
             store_count = cur.fetchone()[0]
 
             if store_count == 0:
-                await self.safe_send(ctx, "❌ You need to add some stores first! Use `!preset_stores` to add our curated list of stores, or `!add_store` to add your own.")
-                return
-
-            # Check if monitor is already running
-            if is_monitor_running(user_id):
-                await self.safe_send(ctx, "Monitor is already running!")
+                await self.safe_send(ctx, "❌ You need to add some stores first! Use `!preset_stores` to add our curated list of stores.")
                 return
 
             # Use custom webhook if set, otherwise use preset webhook
@@ -234,46 +234,39 @@ class MonitorCommands(commands.Cog):
             )
             conn.commit()
 
-            # Start the monitor workflow with environment
-            try:
-                workflow_name = f"Monitor-{user_id}"
+            # Start the monitor
+            workflow_name = f"Monitor-{user_id}"
+            from workflows_set_run_config_tool import workflows_set_run_config_tool
 
-                logging.info(f"Starting monitor workflow for user {user_id}")
-                logging.info(f"Webhook URL configured: {webhook_url}")
+            # Set environment variables for the monitor
+            env = {
+                "MONITOR_USER_ID": str(user_id),
+                "DISCORD_WEBHOOK_URL": webhook_url
+            }
 
-                # Configure workflow with environment variables
-                from workflows_set_run_config_tool import workflows_set_run_config_tool
-                workflows_set_run_config_tool(
-                    name=workflow_name,
-                    command="python main.py",
-                    environment={
-                        "MONITOR_USER_ID": str(user_id),
-                        "DISCORD_WEBHOOK_URL": webhook_url
-                    }
-                )
+            logging.info(f"Starting monitor for user {user_id} with environment: {env}")
 
-                # Give the workflow a moment to start
-                await asyncio.sleep(2)
+            # Start the monitor workflow
+            workflows_set_run_config_tool(
+                name=workflow_name,
+                command=f"python main.py MONITOR_USER_ID={user_id}",
+                environment=env
+            )
 
-                # Verify the monitor is running
+            # Wait briefly for the monitor to start
+            await asyncio.sleep(3)  # Increased wait time
+
+            # Check if monitor started successfully
+            attempts = 3
+            while attempts > 0:
                 if is_monitor_running(user_id):
-                    logging.info(f"Monitor workflow started successfully for user {user_id}")
                     webhook_type = "custom" if custom_webhook else "default"
-                    status_msg = [
-                        "✅ Monitor started successfully!",
-                        f"Using {webhook_type} webhook for notifications.",
-                        f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
-                        "Use !status to check monitor status.",
-                    ]
-                    await self.safe_send(ctx, "\n".join(status_msg))
-                else:
-                    logging.error(f"Failed to start monitor for user {user_id}")
-                    await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
+                    await self.safe_send(ctx, f"✅ Monitor started successfully! Using {webhook_type} webhook for {store_count} stores.")
+                    return
+                await asyncio.sleep(1)
+                attempts -= 1
 
-            except Exception as e:
-                logging.error(f"Error configuring monitor workflow: {e}")
-                await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
-                return
+            await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
 
         except Exception as e:
             logging.error(f"Error starting monitor: {e}")
