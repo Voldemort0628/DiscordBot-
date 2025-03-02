@@ -41,8 +41,10 @@ class MonitorBot(commands.Bot):
 
         if repl_slug and repl_owner:
             self.api_base_url = f'https://{repl_slug}.{repl_owner}.repl.dev/api'
+            logging.info(f"API URL: {self.api_base_url}")
         else:
             self.api_base_url = 'http://localhost:5000/api'
+            logging.info("Using local development API URL")
 
         self.api_key = os.environ['MONITOR_API_KEY']
 
