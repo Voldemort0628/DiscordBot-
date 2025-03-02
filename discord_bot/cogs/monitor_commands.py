@@ -7,6 +7,7 @@ import sys
 import psutil
 import subprocess
 import asyncio
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -25,20 +26,23 @@ def is_monitor_running(user_id):
     try:
         for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
             try:
-                env = proc.environ()
-                # Check both command line args and environment variables
-                is_monitor = ('python' in proc.info['name'] and 
-                            'main.py' in ' '.join(proc.info['cmdline'] or []))
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                env = proc.info['environ']
 
-                has_user_id = (f"MONITOR_USER_ID={user_id}" in ' '.join(proc.info['cmdline'] or []) or
-                              env.get('MONITOR_USER_ID') == str(user_id))
+                is_monitor = ('python' in proc.info['name'] and 'main.py' in cmdline)
+                has_user_id = (str(user_id) == env.get('MONITOR_USER_ID', '') or
+                             f"MONITOR_USER_ID={user_id}" in cmdline)
 
                 if is_monitor and has_user_id:
-                    return True
+                    try:
+                        proc.status()  # Will raise if process is dead
+                        return True
+                    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                        continue
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
+    except Exception as e:
+        logging.error(f"Error checking monitor status: {e}")
     return False
 
 class MonitorCommands(commands.Cog):
@@ -216,45 +220,41 @@ class MonitorCommands(commands.Cog):
                 await self.safe_send(ctx, "Monitor is already running!")
                 return
 
-            # Get absolute path to main.py
-            main_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'main.py')
-
             # Use custom webhook if set, otherwise use preset webhook
             webhook_url = custom_webhook if custom_webhook else DISCORD_WEBHOOK_URL
-
-            # Start monitor process with proper environment variables
-            process_env = os.environ.copy()
-            process_env['DISCORD_WEBHOOK_URL'] = webhook_url
-            process_env['MONITOR_USER_ID'] = str(user_id)
 
             # Enable user in database
             cur.execute(
                 'UPDATE "user" SET enabled = true WHERE id = %s;',
                 (user_id,)
             )
+            conn.commit()
 
-            # Start the monitor process
-            cmd = ['python', main_script]
-            if sys.platform != 'win32':  # Add command line arg on non-Windows platforms
-                cmd.append(f"MONITOR_USER_ID={user_id}")
-
-            subprocess.Popen(
-                cmd,
-                env=process_env,
-                start_new_session=True
+            # Start the monitor workflow
+            from workflows_set_run_config_tool import workflows_set_run_config_tool
+            workflow_name = f"Monitor-{user_id}"
+            workflows_set_run_config_tool(
+                name=workflow_name,
+                command=f"MONITOR_USER_ID={user_id} DISCORD_WEBHOOK_URL={webhook_url} python main.py",
             )
 
-            conn.commit()
-            logging.info(f"Starting monitor for user {user_id} with webhook URL: {webhook_url}")
-            webhook_type = "custom" if custom_webhook else "default"
+            # Give the workflow a moment to start
+            await asyncio.sleep(2)
 
-            status_msg = [
-                "✅ Monitor started successfully!",
-                f"Using {webhook_type} webhook for notifications.",
-                f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
-                "Use !status to check monitor status.",
-            ]
-            await self.safe_send(ctx, "\n".join(status_msg))
+            # Verify the monitor is running
+            if is_monitor_running(user_id):
+                logging.info(f"Starting monitor workflow for user {user_id} with webhook URL: {webhook_url}")
+                webhook_type = "custom" if custom_webhook else "default"
+                status_msg = [
+                    "✅ Monitor started successfully!",
+                    f"Using {webhook_type} webhook for notifications.",
+                    f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
+                    "Use !status to check monitor status.",
+                ]
+                await self.safe_send(ctx, "\n".join(status_msg))
+            else:
+                logging.error(f"Failed to start monitor for user {user_id}")
+                await self.safe_send(ctx, "❌ Failed to start monitor. Please try again later.")
 
         except Exception as e:
             logging.error(f"Error starting monitor: {e}")

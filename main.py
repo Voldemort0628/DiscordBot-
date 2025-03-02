@@ -1,17 +1,25 @@
 import asyncio
 import sys
 import os
-from typing import Dict, List, Set
-import time
 import logging
 import logging.handlers
-from datetime import datetime, timedelta
+from datetime import datetime
+from pathlib import Path
+
+# Early environment check logging
+print("=== Monitor Starting ===")
+print(f"Environment variables:")
+print(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+print(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+print(f"Command line args: {sys.argv}")
+print("=====================")
+
+from typing import Dict, List, Set
+import time
 from shopify_monitor import ShopifyMonitor
 from discord_webhook import RateLimitedDiscordWebhook
 from models import db, User, Store, Keyword, MonitorConfig
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-import os
-from pathlib import Path
 
 # Configure logging with rotation
 log_dir = Path('logs')
@@ -43,6 +51,14 @@ heartbeat_formatter = logging.Formatter('%(asctime)s - %(message)s')
 heartbeat_handler.setFormatter(heartbeat_formatter)
 heartbeat_logger.addHandler(heartbeat_handler)
 heartbeat_logger.setLevel(logging.INFO)
+
+# Log startup information
+logging.info("=== Monitor Starting ===")
+logging.info(f"Environment variables:")
+logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+logging.info(f"Command line args: {sys.argv}")
+logging.info("=====================")
 
 # Add a logger for DNS resolution
 dns_logger = logging.getLogger('dns')
@@ -172,19 +188,40 @@ async def main():
 
     while True:
         try:
-            # Extract user ID from command line arguments
+            # Extract user ID from command line arguments or environment variables
             user_id = None
-            for arg in sys.argv[1:]:
-                if arg.startswith("MONITOR_USER_ID="):
-                    user_id = int(arg.split("=")[1])
-                    break
+
+            # Check environment variable first
+            env_user_id = os.environ.get('MONITOR_USER_ID')
+            if env_user_id:
+                try:
+                    user_id = int(env_user_id)
+                    logging.info(f"Got user ID from environment: {user_id}")
+                except ValueError:
+                    logging.error(f"Invalid MONITOR_USER_ID in environment: {env_user_id}")
+
+            # If not in environment, check command line args
+            if not user_id:
+                for arg in sys.argv[1:]:
+                    if arg.startswith("MONITOR_USER_ID="):
+                        try:
+                            user_id = int(arg.split("=")[1])
+                            logging.info(f"Got user ID from command line: {user_id}")
+                            break
+                        except ValueError:
+                            logging.error(f"Invalid MONITOR_USER_ID in command line: {arg}")
 
             if not user_id:
-                logging.error("Error: MONITOR_USER_ID not provided")
+                logging.error("Error: MONITOR_USER_ID not provided in environment or command line")
                 sys.exit(1)
 
-            logging.info(f"Starting monitor for user ID: {user_id}")
-            logging.info(f"Monitor uptime: {time.time() - start_time:.2f} seconds")
+            # Log all relevant environment variables for debugging
+            webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
+            logging.info(f"Starting monitor with configuration:")
+            logging.info(f"- User ID: {user_id}")
+            logging.info(f"- Webhook URL configured: {'Yes' if webhook_url else 'No'}")
+            logging.info(f"- Monitor uptime: {time.time() - start_time:.2f} seconds")
+
 
             # Start heartbeat task
             heartbeat_task = asyncio.create_task(send_heartbeat(user_id))

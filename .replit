@@ -74,7 +74,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python main.py MONITOR_USER_ID=10"
+args = "python main.py"
 
 [[workflows.workflow]]
 name = "Discord Bot"
