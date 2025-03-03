@@ -224,13 +224,11 @@ class ShopifyMonitor:
                                 store_url
                             )
                             if downloaded:
-                                extracted = await asyncio.get_event_loop().run_in_executor(
-                                    self.thread_pool,
-                                    trafilatura.extract,
+                                extracted = trafilatura.extract(
                                     downloaded,
-                                    False,  # include_comments
-                                    False,  # include_tables
-                                    False   # no_fallback
+                                    include_comments=False,
+                                    include_tables=False,
+                                    no_fallback=False
                                 )
                                 if extracted:
                                     products_data = await asyncio.get_event_loop().run_in_executor(
