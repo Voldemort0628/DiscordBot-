@@ -250,29 +250,32 @@ class MonitorCommands(commands.Cog):
         # Cleanup any existing monitor process first
         await self._cleanup_old_monitor(user_id)
 
-        # Get the absolute path to main.py
-        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        main_script = os.path.join(current_dir, 'main.py')
+        # Get the absolute path to start_monitor.py
+        start_script = os.path.abspath(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            'start_monitor.py'
+        ))
 
         # Enhanced logging of paths and environment
         logger.info(f"Starting monitor for user {user_id}")
-        logger.info(f"Main script path: {main_script}")
+        logger.info(f"Start monitor script path: {start_script}")
+        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         logger.info(f"Current directory: {current_dir}")
         logger.info(f"Python executable: {sys.executable}")
 
         # Verify file exists
-        if not os.path.exists(main_script):
-            logger.error(f"Cannot find main.py at {main_script}")
-            await status_message.edit(content="❌ Error: main.py not found")
+        if not os.path.exists(start_script):
+            logger.error(f"Cannot find start_monitor.py at {start_script}")
+            await status_message.edit(content="❌ Error: start_monitor.py not found")
             return
 
-        # Setup environment with required variables
+        # Setup environment
         process_env = os.environ.copy()
         process_env.update({
             'DISCORD_WEBHOOK_URL': webhook_url,
             'MONITOR_USER_ID': str(user_id),
             'PYTHONUNBUFFERED': '1',
-            'PYTHONPATH': current_dir,
+            'PYTHONPATH': os.getcwd(),
             'DATABASE_URL': os.environ.get('DATABASE_URL', '')
         })
 
@@ -283,16 +286,16 @@ class MonitorCommands(commands.Cog):
         logger.info(f"PYTHONPATH: {process_env.get('PYTHONPATH')}")
 
         try:
-            # Start the monitor process with output capture
+            # Start the monitor process
             process = subprocess.Popen(
-                [sys.executable, main_script],
+                [sys.executable, start_script],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
                 env=process_env,
                 start_new_session=True,
-                cwd=current_dir
+                cwd=os.path.dirname(start_script)
             )
 
             logger.info(f"Started monitor process with PID {process.pid}")

@@ -65,6 +65,7 @@ try:
     from discord_webhook import RateLimitedDiscordWebhook
     from models import db, User, Store, Keyword, MonitorConfig
     from sqlalchemy.exc import OperationalError
+    from sqlalchemy import text
     logger.info("All modules imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import required modules: {e}", exc_info=True)
@@ -120,8 +121,8 @@ async def main():
                 db.create_all()
                 logger.info("Database initialized successfully")
 
-                # Verify database connection
-                db.session.execute('SELECT 1')
+                # Verify database connection using text()
+                db.session.execute(text('SELECT 1'))
                 logger.info("Database connection test successful")
             except Exception as e:
                 logger.error(f"Database initialization error: {e}", exc_info=True)
@@ -168,7 +169,7 @@ async def main():
 
                             logger.info(f"Monitoring {len(stores)} stores with {len(keywords)} keywords")
 
-                            # Monitor stores
+                            # Monitor stores in parallel
                             tasks = []
                             for store in stores:
                                 task = monitor_store(
@@ -184,7 +185,6 @@ async def main():
                             results = await asyncio.gather(*tasks, return_exceptions=True)
                             total_new = sum(r for r in results if isinstance(r, int))
 
-                            # Adaptive delay based on results
                             delay = config.monitor_delay * (0.25 if total_new > 0 else 1.0)
                             await asyncio.sleep(max(0.05, delay))
 
