@@ -1,0 +1,101 @@
+2025-03-02 18:32:44,275 - INFO - Starting monitor for user ID: 15
+2025-03-02 18:32:44,275 - INFO - Logs will be saved to: monitor_log_15_2025-03-02_18-32-44.txt
+2025-03-02 18:32:44,275 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 18:32:44,276 - INFO - Created tracking file: monitor_process_15.json
+2025-03-02 18:32:44,276 - INFO - Starting monitor for user 15
+2025-03-02 18:32:44,276 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-02 18:32:44,276 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 18:32:44,276 - INFO - Environment variables set for monitor process:
+2025-03-02 18:32:44,276 - INFO - - MONITOR_USER_ID: 15
+2025-03-02 18:32:44,277 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-02 18:32:44,277 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-02 18:32:44,278 - INFO - Started process with PID 3296
+2025-03-02 18:32:44,278 - INFO - Updated tracking file with PID: 3296
+2025-03-02 18:32:46,278 - INFO - 2025-03-02 18:32:45,234 - INFO - Starting monitor main loop
+2025-03-02 18:32:46,378 - INFO - 2025-03-02 18:32:45,234 - INFO - === Starting main monitor loop ===
+2025-03-02 18:32:46,479 - INFO - 2025-03-02 18:32:45,235 - INFO - Got user ID from environment: 15
+2025-03-02 18:32:46,579 - INFO - 2025-03-02 18:32:45,235 - INFO - Creating Flask application...
+2025-03-02 18:32:46,679 - INFO - 2025-03-02 18:32:45,316 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 18:32:46,780 - INFO - 2025-03-02 18:32:45,316 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 18:32:46,880 - INFO - 2025-03-02 18:32:45,322 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 18:32:46,980 - INFO - 2025-03-02 18:32:45,322 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 18:32:47,080 - INFO - 2025-03-02 18:32:45,327 - INFO - Flask application created successfully
+2025-03-02 18:32:47,181 - INFO - 2025-03-02 18:32:45,327 - INFO - === Entering app context ===
+2025-03-02 18:32:47,281 - INFO - 2025-03-02 18:32:45,327 - INFO - Attempting database operations for user 15
+2025-03-02 18:32:47,381 - INFO - 2025-03-02 18:32:45,327 - INFO - Created new TTLCache for user 15
+2025-03-02 18:32:47,482 - INFO - 2025-03-02 18:32:45,327 - INFO - Attempting to fetch user (attempt 1/3)
+2025-03-02 18:32:47,582 - INFO - 2025-03-02 18:32:45,636 - INFO - Found enabled user: discord_sierrah_lynn_ (ID: 15)
+2025-03-02 18:32:47,682 - INFO - 2025-03-02 18:32:45,637 - INFO - Fetching monitor configuration...
+2025-03-02 18:32:47,783 - INFO - 2025-03-02 18:32:45,656 - INFO - Setting up monitor and webhook...
+2025-03-02 18:32:47,883 - INFO - 2025-03-02 18:32:45,657 - INFO - Monitor configuration loaded for user discord_sierrah_lynn_ (ID: 15)
+2025-03-02 18:32:47,983 - INFO - 2025-03-02 18:32:45,658 - INFO - - Discord Webhook: Not configured
+2025-03-02 18:32:48,084 - INFO - 2025-03-02 18:32:45,658 - INFO - - Rate limit: 1.0 req/s
+2025-03-02 18:32:48,184 - INFO - 2025-03-02 18:32:45,658 - INFO - - Monitor delay: 30s
+2025-03-02 18:32:48,284 - INFO - 2025-03-02 18:32:45,658 - INFO - === Starting monitoring loop ===
+2025-03-02 18:32:48,385 - INFO - 2025-03-02 18:32:45,660 - INFO -
+2025-03-02 18:32:48,485 - INFO - ---- Monitor Cycle #1 ----
+2025-03-02 18:32:48,586 - INFO - 2025-03-02 18:32:45,770 - INFO - Processing 1 stores for retailer: www.deadstock.ca
+2025-03-02 18:32:48,686 - INFO - 2025-03-02 18:32:45,771 - INFO - Monitor heartbeat - User 15 - Active and running
+2025-03-02 18:32:48,786 - INFO - 2025-03-02 18:32:45,771 - INFO - Fetching products from https://www.deadstock.ca with keywords: ['Jordan', 'Nike']
+2025-03-02 18:32:48,886 - INFO - 2025-03-02 18:32:45,891 - INFO - Successfully resolved www.deadstock.ca to 23.227.38.74 using ['127.0.0.11']
+2025-03-02 18:32:48,987 - INFO - 2025-03-02 18:32:45,900 - INFO - Making initial request to https://www.deadstock.ca/products.json?limit=150
+2025-03-02 18:32:49,087 - INFO - 2025-03-02 18:32:46,349 - INFO - Retrieved 150 products from initial request
+2025-03-02 18:32:49,187 - INFO - 2025-03-02 18:32:46,370 - INFO - Found total of 12 matching products
+2025-03-02 18:32:49,288 - INFO - 2025-03-02 18:32:46,375 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Everyday Plus Cushioned Training Crew Socks (6 Pack) White / Black
+2025-03-02 18:32:49,388 - INFO - 2025-03-02 18:32:46,377 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:32:49,489 - INFO - 2025-03-02 18:32:47,472 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:32:49,589 - INFO - 2025-03-02 18:32:49,495 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:32:53,595 - INFO - 2025-03-02 18:32:53,595 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:32:53,696 - INFO - 2025-03-02 18:32:53,595 - WARNING - Failed to send webhook notification for Nike Everyday Plus Cushioned Training Crew Socks (6 Pack) White / Black, will retry on next cycle
+2025-03-02 18:32:53,796 - INFO - 2025-03-02 18:32:53,595 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Women's Air Rift / Ironstone / Cave Stone
+2025-03-02 18:32:53,896 - INFO - 2025-03-02 18:32:53,596 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:32:54,605 - INFO - 2025-03-02 18:32:54,605 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:32:56,690 - INFO - 2025-03-02 18:32:56,689 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:00,809 - INFO - 2025-03-02 18:33:00,809 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:00,910 - INFO - 2025-03-02 18:33:00,809 - WARNING - Failed to send webhook notification for Nike Women's Air Rift / Ironstone / Cave Stone, will retry on next cycle
+2025-03-02 18:33:01,010 - INFO - 2025-03-02 18:33:00,809 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Women's Air Max SNDR Volt / Black - White
+2025-03-02 18:33:01,110 - INFO - 2025-03-02 18:33:00,810 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:01,905 - INFO - 2025-03-02 18:33:01,904 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:03,910 - INFO - 2025-03-02 18:33:03,910 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:08,083 - INFO - 2025-03-02 18:33:08,082 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:08,183 - INFO - 2025-03-02 18:33:08,082 - WARNING - Failed to send webhook notification for Nike Women's Air Max SNDR Volt / Black - White, will retry on next cycle
+2025-03-02 18:33:08,283 - INFO - 2025-03-02 18:33:08,082 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Jordan 9 Retro Summit White / Black - Dark Powder Blue
+2025-03-02 18:33:08,384 - INFO - 2025-03-02 18:33:08,082 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:09,102 - INFO - 2025-03-02 18:33:09,102 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:11,149 - INFO - 2025-03-02 18:33:11,148 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:15,325 - INFO - 2025-03-02 18:33:15,324 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:15,425 - INFO - 2025-03-02 18:33:15,324 - WARNING - Failed to send webhook notification for Jordan 9 Retro Summit White / Black - Dark Powder Blue, will retry on next cycle
+2025-03-02 18:33:15,526 - INFO - 2025-03-02 18:33:15,324 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Jordan Women's 1 Zoom CMFT 2 Pine Green / Orange Blaze - Muslin
+2025-03-02 18:33:15,626 - INFO - 2025-03-02 18:33:15,325 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:16,402 - INFO - 2025-03-02 18:33:16,402 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:18,577 - INFO - 2025-03-02 18:33:18,577 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:22,757 - INFO - 2025-03-02 18:33:22,756 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:22,857 - INFO - 2025-03-02 18:33:22,756 - WARNING - Failed to send webhook notification for Jordan Women's 1 Zoom CMFT 2 Pine Green / Orange Blaze - Muslin, will retry on next cycle
+2025-03-02 18:33:22,957 - INFO - 2025-03-02 18:33:22,757 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Air Trainer 1 Hay / Baroque Brown
+2025-03-02 18:33:23,058 - INFO - 2025-03-02 18:33:22,757 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:23,776 - INFO - 2025-03-02 18:33:23,776 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:25,936 - INFO - 2025-03-02 18:33:25,936 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:30,281 - INFO - 2025-03-02 18:33:30,280 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:30,381 - INFO - 2025-03-02 18:33:30,280 - WARNING - Failed to send webhook notification for Nike Air Trainer 1 Hay / Baroque Brown, will retry on next cycle
+2025-03-02 18:33:30,481 - INFO - 2025-03-02 18:33:30,280 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Dunk High Retro PRM Armory Navy / Mineral Slate
+2025-03-02 18:33:30,581 - INFO - 2025-03-02 18:33:30,280 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:31,343 - INFO - 2025-03-02 18:33:31,343 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:33,508 - INFO - 2025-03-02 18:33:33,507 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:37,579 - INFO - 2025-03-02 18:33:37,578 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:37,679 - INFO - 2025-03-02 18:33:37,578 - WARNING - Failed to send webhook notification for Nike Dunk High Retro PRM Armory Navy / Mineral Slate, will retry on next cycle
+2025-03-02 18:33:37,779 - INFO - 2025-03-02 18:33:37,578 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Dunk Low SP Veneer / Deep Blue
+2025-03-02 18:33:37,880 - INFO - 2025-03-02 18:33:37,579 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:38,600 - INFO - 2025-03-02 18:33:38,600 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:40,606 - INFO - 2025-03-02 18:33:40,605 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:44,692 - INFO - 2025-03-02 18:33:44,692 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:44,792 - INFO - 2025-03-02 18:33:44,692 - WARNING - Failed to send webhook notification for Nike Dunk Low SP Veneer / Deep Blue, will retry on next cycle
+2025-03-02 18:33:44,893 - INFO - 2025-03-02 18:33:44,692 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Air Max Dn8 Hyper Pink / Black - Hyper Pink
+2025-03-02 18:33:44,993 - INFO - 2025-03-02 18:33:44,693 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:45,756 - INFO - 2025-03-02 18:33:45,756 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:47,890 - INFO - 2025-03-02 18:33:47,890 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:52,142 - INFO - 2025-03-02 18:33:52,141 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:52,242 - INFO - 2025-03-02 18:33:52,142 - WARNING - Failed to send webhook notification for Nike Air Max Dn8 Hyper Pink / Black - Hyper Pink, will retry on next cycle
+2025-03-02 18:33:52,343 - INFO - 2025-03-02 18:33:52,142 - INFO - [User 15] New product/restock found on https://www.deadstock.ca: Nike Women's Air Max SNDR Canyon Gold / Deep Ocean
+2025-03-02 18:33:52,443 - INFO - 2025-03-02 18:33:52,142 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:53,174 - INFO - 2025-03-02 18:33:53,174 - ERROR - Webhook delivery error: Constructor parameter should be str
+2025-03-02 18:33:55,372 - INFO - 2025-03-02 18:33:55,372 - ERROR - Webhook delivery error: Constructor parameter should be str

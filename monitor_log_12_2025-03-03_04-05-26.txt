@@ -1,0 +1,120 @@
+2025-03-03 04:05:26,202 - INFO - Starting monitor for user ID: 12
+2025-03-03 04:05:26,203 - INFO - Logs will be saved to: monitor_log_12_2025-03-03_04-05-26.txt
+2025-03-03 04:05:26,203 - INFO - Current working directory: /home/runner/workspace
+2025-03-03 04:05:26,203 - INFO - Created tracking file: monitor_process_12.json
+2025-03-03 04:05:26,203 - INFO - Starting monitor for user 12
+2025-03-03 04:05:26,203 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-03 04:05:26,204 - INFO - Current working directory: /home/runner/workspace
+2025-03-03 04:05:26,204 - INFO - Environment variables set for monitor process:
+2025-03-03 04:05:26,204 - INFO - - MONITOR_USER_ID: 12
+2025-03-03 04:05:26,204 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-03 04:05:26,204 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-03 04:05:26,205 - INFO - Started process with PID 4484
+2025-03-03 04:05:26,205 - INFO - Updated tracking file with PID: 4484
+2025-03-03 04:05:28,205 - INFO - 2025-03-03 04:05:27,142 - INFO - Starting monitor main loop
+2025-03-03 04:05:28,306 - INFO - 2025-03-03 04:05:27,142 - INFO - === Starting main monitor loop ===
+2025-03-03 04:05:28,406 - INFO - 2025-03-03 04:05:27,142 - INFO - Got user ID from environment: 12
+2025-03-03 04:05:28,506 - INFO - 2025-03-03 04:05:27,142 - INFO - Creating Flask application...
+2025-03-03 04:05:28,607 - INFO - 2025-03-03 04:05:27,224 - INFO - Running in production mode with Replit redirect URI
+2025-03-03 04:05:28,707 - INFO - 2025-03-03 04:05:27,224 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-03 04:05:28,807 - INFO - 2025-03-03 04:05:27,233 - INFO - Running in production mode with Replit redirect URI
+2025-03-03 04:05:28,907 - INFO - 2025-03-03 04:05:27,233 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-03 04:05:29,008 - INFO - 2025-03-03 04:05:27,239 - INFO - Flask application created successfully
+2025-03-03 04:05:29,108 - INFO - 2025-03-03 04:05:27,239 - INFO - === Entering app context ===
+2025-03-03 04:05:29,208 - INFO - 2025-03-03 04:05:27,239 - INFO - Attempting database operations for user 12
+2025-03-03 04:05:29,309 - INFO - 2025-03-03 04:05:27,239 - INFO - Created new TTLCache for user 12
+2025-03-03 04:05:29,409 - INFO - 2025-03-03 04:05:27,239 - INFO - Attempting to fetch user (attempt 1/3)
+2025-03-03 04:05:29,509 - INFO - 2025-03-03 04:05:27,563 - INFO - Found enabled user: discord__parris_ (ID: 12)
+2025-03-03 04:05:29,610 - INFO - 2025-03-03 04:05:27,563 - INFO - Fetching monitor configuration...
+2025-03-03 04:05:29,710 - INFO - 2025-03-03 04:05:27,589 - INFO - Setting up monitor and webhook...
+2025-03-03 04:05:29,810 - INFO - 2025-03-03 04:05:27,590 - INFO - Monitor configuration loaded for user discord__parris_ (ID: 12)
+2025-03-03 04:05:29,910 - INFO - 2025-03-03 04:05:27,590 - INFO - - Discord Webhook: Configured
+2025-03-03 04:05:30,011 - INFO - 2025-03-03 04:05:27,591 - INFO - - Rate limit: 1.0 req/s
+2025-03-03 04:05:30,111 - INFO - 2025-03-03 04:05:27,591 - INFO - - Monitor delay: 30s
+2025-03-03 04:05:30,211 - INFO - 2025-03-03 04:05:27,591 - INFO - === Starting monitoring loop ===
+2025-03-03 04:05:30,312 - INFO - 2025-03-03 04:05:27,591 - INFO -
+2025-03-03 04:05:30,412 - INFO - ---- Monitor Cycle #1 ----
+2025-03-03 04:05:30,512 - INFO - 2025-03-03 04:05:27,716 - INFO - Processing 1 stores for retailer: www.blendsus.com
+2025-03-03 04:05:30,613 - INFO - 2025-03-03 04:05:27,717 - INFO - Monitor heartbeat - User 12 - Active and running
+2025-03-03 04:05:30,713 - INFO - 2025-03-03 04:05:27,722 - INFO - Fetching products from https://www.blendsus.com with keywords: ['jordan', 'New Balance']
+2025-03-03 04:05:30,813 - INFO - 2025-03-03 04:05:27,913 - INFO - Successfully resolved www.blendsus.com to 23.227.38.32 using ['127.0.0.11']
+2025-03-03 04:05:30,914 - INFO - 2025-03-03 04:05:27,923 - INFO - Making initial request to https://www.blendsus.com/products.json?limit=150
+2025-03-03 04:05:31,014 - INFO - 2025-03-03 04:05:28,341 - INFO - Retrieved 150 products from initial request
+2025-03-03 04:05:31,114 - INFO - 2025-03-03 04:05:28,343 - INFO - Found total of 6 matching products
+2025-03-03 04:05:31,215 - INFO - 2025-03-03 04:05:28,344 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 530 WHITE INDIGO
+2025-03-03 04:05:31,315 - INFO - 2025-03-03 04:05:28,849 - INFO - Successfully notified about product: NEW BALANCE 530 WHITE INDIGO
+2025-03-03 04:05:31,415 - INFO - 2025-03-03 04:05:28,849 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1000 NAVY SEA STONE
+2025-03-03 04:05:31,516 - INFO - 2025-03-03 04:05:31,490 - INFO - Successfully notified about product: NEW BALANCE 1000 NAVY SEA STONE
+2025-03-03 04:05:31,616 - INFO - 2025-03-03 04:05:31,491 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906R TEAM ROYAL
+2025-03-03 04:05:34,058 - INFO - 2025-03-03 04:05:34,058 - INFO - Successfully notified about product: NEW BALANCE 1906R TEAM ROYAL
+2025-03-03 04:05:34,159 - INFO - 2025-03-03 04:05:34,059 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 740 INCENSE
+2025-03-03 04:05:36,745 - INFO - 2025-03-03 04:05:36,745 - INFO - Successfully notified about product: NEW BALANCE 740 INCENSE
+2025-03-03 04:05:36,846 - INFO - 2025-03-03 04:05:36,746 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906R SILVER
+2025-03-03 04:05:39,269 - INFO - 2025-03-03 04:05:39,269 - INFO - Successfully notified about product: NEW BALANCE 1906R SILVER
+2025-03-03 04:05:39,369 - INFO - 2025-03-03 04:05:39,269 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906 WHITE
+2025-03-03 04:05:41,799 - INFO - 2025-03-03 04:05:41,799 - INFO - Successfully notified about product: NEW BALANCE 1906 WHITE
+2025-03-03 04:05:41,900 - INFO - 2025-03-03 04:05:41,800 - INFO - Processing 1 stores for retailer: www.deadstock.ca
+2025-03-03 04:05:42,000 - INFO - 2025-03-03 04:05:41,800 - INFO - Fetching products from https://www.deadstock.ca with keywords: ['jordan', 'New Balance']
+2025-03-03 04:05:42,100 - INFO - 2025-03-03 04:05:41,817 - INFO - Successfully resolved www.deadstock.ca to 23.227.38.74 using ['127.0.0.11']
+2025-03-03 04:05:42,201 - INFO - 2025-03-03 04:05:41,828 - INFO - Making initial request to https://www.deadstock.ca/products.json?limit=150
+2025-03-03 04:05:42,417 - INFO - 2025-03-03 04:05:42,416 - INFO - Retrieved 150 products from initial request
+2025-03-03 04:05:42,517 - INFO - 2025-03-03 04:05:42,423 - INFO - Found total of 2 matching products
+2025-03-03 04:05:42,617 - INFO - 2025-03-03 04:05:42,424 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Jordan Women's 1 Zoom CMFT 2 Pine Green / Orange Blaze - Muslin
+2025-03-03 04:05:44,470 - INFO - 2025-03-03 04:05:44,469 - INFO - Successfully notified about product: Jordan Women's 1 Zoom CMFT 2 Pine Green / Orange Blaze - Muslin
+2025-03-03 04:05:44,570 - INFO - 2025-03-03 04:05:44,470 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Jordan Women's 1 Retro High OG Metallic Silver / Photon Dust - Sail
+2025-03-03 04:05:47,137 - INFO - 2025-03-03 04:05:47,137 - INFO - Successfully notified about product: Jordan Women's 1 Retro High OG Metallic Silver / Photon Dust - Sail
+2025-03-03 04:05:47,238 - INFO - 2025-03-03 04:05:47,137 - INFO - Processing 1 stores for retailer: www.bowsandarrowsberkeley.com
+2025-03-03 04:05:47,338 - INFO - 2025-03-03 04:05:47,138 - INFO - Fetching products from https://www.bowsandarrowsberkeley.com with keywords: ['jordan', 'New Balance']
+2025-03-03 04:05:47,438 - INFO - 2025-03-03 04:05:47,178 - INFO - Successfully resolved www.bowsandarrowsberkeley.com to 23.227.38.74 using ['127.0.0.11']
+2025-03-03 04:05:47,539 - INFO - 2025-03-03 04:05:47,186 - INFO - Making initial request to https://www.bowsandarrowsberkeley.com/products.json?limit=150
+2025-03-03 04:05:47,639 - INFO - 2025-03-03 04:05:47,545 - INFO - Retrieved 150 products from initial request
+2025-03-03 04:05:47,739 - INFO - 2025-03-03 04:05:47,546 - INFO - Found total of 2 matching products
+2025-03-03 04:05:47,840 - INFO - 2025-03-03 04:05:47,547 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: New Balance 860v2 (Black)
+2025-03-03 04:05:49,818 - INFO - 2025-03-03 04:05:49,818 - INFO - Successfully notified about product: New Balance 860v2 (Black)
+2025-03-03 04:05:49,919 - INFO - 2025-03-03 04:05:49,819 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: New Balance 860v2 (Grey)
+2025-03-03 04:05:52,618 - INFO - 2025-03-03 04:05:52,618 - INFO - Successfully notified about product: New Balance 860v2 (Grey)
+2025-03-03 04:05:52,718 - INFO - 2025-03-03 04:05:52,618 - INFO - Processing 1 stores for retailer: www.featuresneakerboutique.com
+2025-03-03 04:05:52,818 - INFO - 2025-03-03 04:05:52,619 - INFO - Fetching products from https://www.featuresneakerboutique.com with keywords: ['jordan', 'New Balance']
+2025-03-03 04:05:52,919 - INFO - 2025-03-03 04:05:52,634 - INFO - Successfully resolved www.featuresneakerboutique.com to 23.227.38.74 using ['127.0.0.11']
+2025-03-03 04:05:53,019 - INFO - 2025-03-03 04:05:52,642 - INFO - Making initial request to https://www.featuresneakerboutique.com/products.json?limit=150
+2025-03-03 04:05:53,119 - INFO - 2025-03-03 04:05:53,077 - INFO - Retrieved 150 products from initial request
+2025-03-03 04:05:53,220 - INFO - 2025-03-03 04:05:53,079 - INFO - Found total of 23 matching products
+2025-03-03 04:05:53,320 - INFO - 2025-03-03 04:05:53,080 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 (TD) - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:05:55,195 - INFO - 2025-03-03 04:05:55,195 - INFO - Successfully notified about product: 9060 (TD) - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:05:55,296 - INFO - 2025-03-03 04:05:55,195 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 (PS) - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:05:57,738 - INFO - 2025-03-03 04:05:57,737 - INFO - Successfully notified about product: 9060 (PS) - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:05:57,838 - INFO - 2025-03-03 04:05:57,738 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 (GS) - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:06:00,425 - INFO - 2025-03-03 04:06:00,425 - INFO - Successfully notified about product: 9060 (GS) - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:06:00,526 - INFO - 2025-03-03 04:06:00,426 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 740 - Concord Grape/Purple Fuchsia/Sun Glow/Firefly
+2025-03-03 04:06:03,034 - INFO - 2025-03-03 04:06:03,034 - INFO - Successfully notified about product: 740 - Concord Grape/Purple Fuchsia/Sun Glow/Firefly
+2025-03-03 04:06:03,135 - INFO - 2025-03-03 04:06:03,035 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:06:05,487 - INFO - 2025-03-03 04:06:05,486 - INFO - Successfully notified about product: 9060 - New Spruce/Peach Blossom/Team Royal
+2025-03-03 04:06:05,587 - INFO - 2025-03-03 04:06:05,486 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 530 - Timberwolf/Linen/Landslide
+2025-03-03 04:06:08,030 - INFO - 2025-03-03 04:06:08,030 - INFO - Successfully notified about product: 530 - Timberwolf/Linen/Landslide
+2025-03-03 04:06:08,131 - INFO - 2025-03-03 04:06:08,031 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 4 Retro 'Abundance' (TD) - Seafoam/Sail/Metallic Silver
+2025-03-03 04:06:10,611 - INFO - 2025-03-03 04:06:10,611 - INFO - Successfully notified about product: Air Jordan 4 Retro 'Abundance' (TD) - Seafoam/Sail/Metallic Silver
+2025-03-03 04:06:10,712 - INFO - 2025-03-03 04:06:10,611 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 4 Retro 'Abundance' (PS) - Seafoam/Sail/Metallic Silver
+2025-03-03 04:06:13,157 - INFO - 2025-03-03 04:06:13,157 - INFO - Successfully notified about product: Air Jordan 4 Retro 'Abundance' (PS) - Seafoam/Sail/Metallic Silver
+2025-03-03 04:06:13,258 - INFO - 2025-03-03 04:06:13,157 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Jordan 4 Retro 'Abundance'- Seafoam/Sail/Metallic Silver
+2025-03-03 04:06:15,795 - INFO - 2025-03-03 04:06:15,795 - INFO - Successfully notified about product: Women's Air Jordan 4 Retro 'Abundance'- Seafoam/Sail/Metallic Silver
+2025-03-03 04:06:15,895 - INFO - 2025-03-03 04:06:15,795 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 1906A - Olive Juice/Sea Salt/Woodland
+2025-03-03 04:06:18,528 - INFO - 2025-03-03 04:06:18,528 - INFO - Successfully notified about product: 1906A - Olive Juice/Sea Salt/Woodland
+2025-03-03 04:06:18,628 - INFO - 2025-03-03 04:06:18,528 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 1906A - Inkwell/Sea Salt/Faded Plum
+2025-03-03 04:06:21,104 - INFO - 2025-03-03 04:06:21,103 - INFO - Successfully notified about product: 1906A - Inkwell/Sea Salt/Faded Plum
+2025-03-03 04:06:21,204 - INFO - 2025-03-03 04:06:21,104 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 1 Mid SE (GS) - White/Dark Pony/Black
+2025-03-03 04:06:23,698 - INFO - 2025-03-03 04:06:23,698 - INFO - Successfully notified about product: Air Jordan 1 Mid SE (GS) - White/Dark Pony/Black
+2025-03-03 04:06:23,799 - INFO - 2025-03-03 04:06:23,698 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:26,350 - INFO - 2025-03-03 04:06:26,350 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:26,450 - INFO - 2025-03-03 04:06:26,350 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' (TD) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:28,874 - INFO - 2025-03-03 04:06:28,874 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' (TD) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:28,974 - INFO - 2025-03-03 04:06:28,874 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' (PS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:31,491 - INFO - 2025-03-03 04:06:31,491 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' (PS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:31,591 - INFO - 2025-03-03 04:06:31,491 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' (GS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:34,003 - INFO - 2025-03-03 04:06:34,003 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' (GS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-03 04:06:34,104 - INFO - 2025-03-03 04:06:34,004 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Jordan 1 High Method of Make - Medium Olive/Oil Green/Sea Glass/Seafoam
+2025-03-03 04:06:36,781 - INFO - 2025-03-03 04:06:36,781 - INFO - Successfully notified about product: Women's Air Jordan 1 High Method of Make - Medium Olive/Oil Green/Sea Glass/Seafoam
+2025-03-03 04:06:36,881 - INFO - 2025-03-03 04:06:36,781 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Jordan 1 Mid SE (TD) - White/Dark Pony/Black
+2025-03-03 04:06:39,389 - INFO - 2025-03-03 04:06:39,389 - INFO - Successfully notified about product: Jordan 1 Mid SE (TD) - White/Dark Pony/Black
+2025-03-03 04:06:39,490 - INFO - 2025-03-03 04:06:39,390 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Jordan 1 Mid SE (TD) - Pine Green/Sail/Black/Team Orange
+2025-03-03 04:06:42,046 - INFO - 2025-03-03 04:06:42,045 - INFO - Successfully notified about product: Jordan 1 Mid SE (TD) - Pine Green/Sail/Black/Team Orange
+2025-03-03 04:06:42,146 - INFO - 2025-03-03 04:06:42,046 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 1 Mid (PS) - Black/Off Noir/Summit White

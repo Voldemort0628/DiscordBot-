@@ -1,0 +1,64 @@
+2025-03-02 18:50:01,356 - INFO - Starting monitor for user ID: 10
+2025-03-02 18:50:01,356 - INFO - Logs will be saved to: monitor_log_10_2025-03-02_18-50-01.txt
+2025-03-02 18:50:01,356 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 18:50:01,356 - INFO - Created tracking file: monitor_process_10.json
+2025-03-02 18:50:01,356 - INFO - Starting monitor for user 10
+2025-03-02 18:50:01,356 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-02 18:50:01,357 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 18:50:01,357 - INFO - Environment variables set for monitor process:
+2025-03-02 18:50:01,357 - INFO - - MONITOR_USER_ID: 10
+2025-03-02 18:50:01,357 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-02 18:50:01,357 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-02 18:50:01,360 - INFO - Started process with PID 3949
+2025-03-02 18:50:01,361 - INFO - Updated tracking file with PID: 3949
+2025-03-02 18:50:03,361 - INFO - 2025-03-02 18:50:02,472 - INFO - Starting monitor main loop
+2025-03-02 18:50:03,461 - INFO - 2025-03-02 18:50:02,472 - INFO - === Starting main monitor loop ===
+2025-03-02 18:50:03,562 - INFO - 2025-03-02 18:50:02,473 - INFO - Got user ID from environment: 10
+2025-03-02 18:50:03,662 - INFO - 2025-03-02 18:50:02,473 - INFO - Creating Flask application...
+2025-03-02 18:50:03,762 - INFO - 2025-03-02 18:50:02,557 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 18:50:03,862 - INFO - 2025-03-02 18:50:02,558 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 18:50:03,963 - INFO - 2025-03-02 18:50:02,564 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 18:50:04,063 - INFO - 2025-03-02 18:50:02,564 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 18:50:04,163 - INFO - 2025-03-02 18:50:02,568 - INFO - Flask application created successfully
+2025-03-02 18:50:04,263 - INFO - 2025-03-02 18:50:02,568 - INFO - === Entering app context ===
+2025-03-02 18:50:04,364 - INFO - 2025-03-02 18:50:02,568 - INFO - Attempting database operations for user 10
+2025-03-02 18:50:04,464 - INFO - 2025-03-02 18:50:02,568 - INFO - Created new TTLCache for user 10
+2025-03-02 18:50:04,564 - INFO - 2025-03-02 18:50:02,569 - INFO - Attempting to fetch user (attempt 1/3)
+2025-03-02 18:50:04,665 - INFO - 2025-03-02 18:50:02,870 - INFO - Found enabled user: Testing6 (ID: 10)
+2025-03-02 18:50:04,765 - INFO - 2025-03-02 18:50:02,870 - INFO - Fetching monitor configuration...
+2025-03-02 18:50:04,866 - INFO - 2025-03-02 18:50:02,889 - INFO - Setting up monitor and webhook...
+2025-03-02 18:50:04,966 - INFO - 2025-03-02 18:50:02,890 - INFO - Monitor configuration loaded for user Testing6 (ID: 10)
+2025-03-02 18:50:05,067 - INFO - 2025-03-02 18:50:02,890 - INFO - - Discord Webhook: Configured
+2025-03-02 18:50:05,167 - INFO - 2025-03-02 18:50:02,890 - INFO - - Rate limit: 1.0 req/s
+2025-03-02 18:50:05,268 - INFO - 2025-03-02 18:50:02,890 - INFO - - Monitor delay: 30s
+2025-03-02 18:50:05,368 - INFO - 2025-03-02 18:50:02,890 - INFO - === Starting monitoring loop ===
+2025-03-02 18:50:05,468 - INFO - 2025-03-02 18:50:02,890 - INFO -
+2025-03-02 18:50:05,568 - INFO - ---- Monitor Cycle #1 ----
+2025-03-02 18:50:05,669 - INFO - 2025-03-02 18:50:03,004 - INFO - Processing 1 stores for retailer: shop.shopwss.com
+2025-03-02 18:50:05,770 - INFO - 2025-03-02 18:50:03,005 - INFO - Monitor heartbeat - User 10 - Active and running
+2025-03-02 18:50:05,870 - INFO - 2025-03-02 18:50:03,005 - INFO - Fetching products from https://shop.shopwss.com with keywords: ['Union Jordan 1', 'Nike Dunk', 'Jordan', 'Supreme', 'Nike SB', 'New Balance', 'Union', 'Travis Scott', 'Jordan 4']
+2025-03-02 18:50:11,468 - INFO - 2025-03-02 18:50:11,467 - ERROR - All DNS resolution methods failed for shop.shopwss.com:
+2025-03-02 18:50:11,568 - INFO - DNS resolution failed for shop.shopwss.com using ['127.0.0.11']: The DNS query name does not exist: shop.shopwss.com.
+2025-03-02 18:50:11,668 - INFO - DNS resolution failed for shop.shopwss.com using ['8.8.8.8', '8.8.4.4']: The DNS query name does not exist: shop.shopwss.com.
+2025-03-02 18:50:11,769 - INFO - DNS resolution failed for shop.shopwss.com using ['1.1.1.1', '1.0.0.1']: The resolution lifetime expired after 4.103 seconds: Server Do53:1.1.1.1@53 answered The DNS operation timed out.; Server Do53:1.0.0.1@53 answered The DNS operation timed out.
+2025-03-02 18:50:11,869 - INFO - DNS resolution failed for shop.shopwss.com using ['208.67.222.222', '208.67.220.220']: The resolution lifetime expired after 4.103 seconds: Server Do53:208.67.222.222@53 answered The DNS operation timed out.; Server Do53:208.67.220.220@53 answered The DNS operation timed out.
+2025-03-02 18:50:11,969 - INFO - Socket resolution failed for shop.shopwss.com: [Errno -2] Name or service not known
+2025-03-02 18:50:19,838 - INFO - 2025-03-02 18:50:19,838 - ERROR - All DNS resolution methods failed for shop.shopwss.com:
+2025-03-02 18:50:19,938 - INFO - DNS resolution failed for shop.shopwss.com using ['127.0.0.11']: The DNS query name does not exist: shop.shopwss.com.
+2025-03-02 18:50:20,039 - INFO - DNS resolution failed for shop.shopwss.com using ['8.8.8.8', '8.8.4.4']: The DNS query name does not exist: shop.shopwss.com.
+2025-03-02 18:50:20,139 - INFO - DNS resolution failed for shop.shopwss.com using ['1.1.1.1', '1.0.0.1']: The resolution lifetime expired after 4.102 seconds: Server Do53:1.1.1.1@53 answered The DNS operation timed out.; Server Do53:1.0.0.1@53 answered The DNS operation timed out.
+2025-03-02 18:50:20,239 - INFO - DNS resolution failed for shop.shopwss.com using ['208.67.222.222', '208.67.220.220']: The resolution lifetime expired after 4.103 seconds: Server Do53:208.67.222.222@53 answered The DNS operation timed out.; Server Do53:208.67.220.220@53 answered The DNS operation timed out.
+2025-03-02 18:50:20,339 - INFO - Socket resolution failed for shop.shopwss.com: [Errno -2] Name or service not known
+2025-03-02 18:50:28,099 - INFO - 2025-03-02 18:50:28,099 - ERROR - All DNS resolution methods failed for shop.shopwss.com:
+2025-03-02 18:50:28,199 - INFO - DNS resolution failed for shop.shopwss.com using ['127.0.0.11']: The DNS query name does not exist: shop.shopwss.com.
+2025-03-02 18:50:28,300 - INFO - DNS resolution failed for shop.shopwss.com using ['8.8.8.8', '8.8.4.4']: The DNS query name does not exist: shop.shopwss.com.
+2025-03-02 18:50:28,400 - INFO - DNS resolution failed for shop.shopwss.com using ['1.1.1.1', '1.0.0.1']: The resolution lifetime expired after 4.103 seconds: Server Do53:1.1.1.1@53 answered The DNS operation timed out.; Server Do53:1.0.0.1@53 answered The DNS operation timed out.
+2025-03-02 18:50:28,500 - INFO - DNS resolution failed for shop.shopwss.com using ['208.67.222.222', '208.67.220.220']: The resolution lifetime expired after 4.103 seconds: Server Do53:208.67.222.222@53 answered The DNS operation timed out.; Server Do53:208.67.220.220@53 answered The DNS operation timed out.
+2025-03-02 18:50:28,601 - INFO - Socket resolution failed for shop.shopwss.com: [Errno -2] Name or service not known
+2025-03-02 18:50:28,701 - INFO - 2025-03-02 18:50:28,099 - ERROR - Store validation failed for https://shop.shopwss.com after all attempts
+2025-03-02 18:50:28,801 - INFO - 2025-03-02 18:50:28,099 - ERROR - Store validation failed for https://shop.shopwss.com
+2025-03-02 18:50:28,902 - INFO - 2025-03-02 18:50:28,099 - WARNING - [User 10] No products found for https://shop.shopwss.com, this might indicate an access issue
+2025-03-02 18:50:29,002 - INFO - 2025-03-02 18:50:28,099 - INFO - Processing 1 stores for retailer: www.shoepalace.com
+2025-03-02 18:50:29,102 - INFO - 2025-03-02 18:50:28,100 - INFO - Fetching products from https://www.shoepalace.com with keywords: ['Union Jordan 1', 'Nike Dunk', 'Jordan', 'Supreme', 'Nike SB', 'New Balance', 'Union', 'Travis Scott', 'Jordan 4']
+2025-03-02 18:50:29,203 - INFO - 2025-03-02 18:50:28,122 - INFO - Successfully resolved www.shoepalace.com to 23.227.38.74 using ['127.0.0.11']
+2025-03-02 18:50:29,303 - INFO - 2025-03-02 18:50:28,130 - INFO - Making initial request to https://www.shoepalace.com/products.json?limit=150

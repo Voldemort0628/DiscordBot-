@@ -1,0 +1,49 @@
+2025-03-02 23:49:30,391 - INFO - Starting monitor for user ID: 12
+2025-03-02 23:49:30,391 - INFO - Logs will be saved to: monitor_log_12_2025-03-02_23-49-30.txt
+2025-03-02 23:49:30,392 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 23:49:30,392 - INFO - Created tracking file: monitor_process_12.json
+2025-03-02 23:49:30,392 - INFO - Starting monitor for user 12
+2025-03-02 23:49:30,392 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-02 23:49:30,392 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 23:49:30,392 - INFO - Environment variables set for monitor process:
+2025-03-02 23:49:30,393 - INFO - - MONITOR_USER_ID: 12
+2025-03-02 23:49:30,393 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-02 23:49:30,393 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-02 23:49:30,393 - INFO - Started process with PID 4311
+2025-03-02 23:49:30,394 - INFO - Updated tracking file with PID: 4311
+2025-03-02 23:49:32,394 - INFO - 2025-03-02 23:49:31,283 - INFO - Starting monitor main loop
+2025-03-02 23:49:32,494 - INFO - 2025-03-02 23:49:31,283 - INFO - === Starting main monitor loop ===
+2025-03-02 23:49:32,595 - INFO - 2025-03-02 23:49:31,284 - INFO - Got user ID from environment: 12
+2025-03-02 23:49:32,695 - INFO - 2025-03-02 23:49:31,284 - INFO - Creating Flask application...
+2025-03-02 23:49:32,796 - INFO - 2025-03-02 23:49:31,361 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 23:49:32,896 - INFO - 2025-03-02 23:49:31,361 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 23:49:32,996 - INFO - 2025-03-02 23:49:31,369 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 23:49:33,097 - INFO - 2025-03-02 23:49:31,369 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 23:49:33,197 - INFO - 2025-03-02 23:49:31,374 - INFO - Flask application created successfully
+2025-03-02 23:49:33,298 - INFO - 2025-03-02 23:49:31,375 - INFO - === Entering app context ===
+2025-03-02 23:49:33,398 - INFO - 2025-03-02 23:49:31,375 - INFO - Attempting database operations for user 12
+2025-03-02 23:49:33,498 - INFO - 2025-03-02 23:49:31,376 - INFO - Created new TTLCache for user 12
+2025-03-02 23:49:33,603 - INFO - 2025-03-02 23:49:31,376 - INFO - Attempting to fetch user (attempt 1/3)
+2025-03-02 23:49:33,703 - INFO - 2025-03-02 23:49:31,702 - INFO - Found enabled user: discord__parris_ (ID: 12)
+2025-03-02 23:49:33,804 - INFO - 2025-03-02 23:49:31,702 - INFO - Fetching monitor configuration...
+2025-03-02 23:49:33,904 - INFO - 2025-03-02 23:49:31,729 - INFO - Setting up monitor and webhook...
+2025-03-02 23:49:34,004 - INFO - 2025-03-02 23:49:31,731 - INFO - Monitor configuration loaded for user discord__parris_ (ID: 12)
+2025-03-02 23:49:34,104 - INFO - 2025-03-02 23:49:31,731 - INFO - - Discord Webhook: Configured
+2025-03-02 23:49:34,205 - INFO - 2025-03-02 23:49:31,731 - INFO - - Rate limit: 1.0 req/s
+2025-03-02 23:49:34,305 - INFO - 2025-03-02 23:49:31,731 - INFO - - Monitor delay: 30s
+2025-03-02 23:49:34,405 - INFO - 2025-03-02 23:49:31,731 - INFO - === Starting monitoring loop ===
+2025-03-02 23:49:34,506 - INFO - 2025-03-02 23:49:31,732 - INFO -
+2025-03-02 23:49:34,606 - INFO - ---- Monitor Cycle #1 ----
+2025-03-02 23:49:34,706 - INFO - 2025-03-02 23:49:31,861 - INFO - Processing 1 stores for retailer: www.blendsus.com
+2025-03-02 23:49:34,807 - INFO - 2025-03-02 23:49:31,861 - INFO - Monitor heartbeat - User 12 - Active and running
+2025-03-02 23:49:34,907 - INFO - 2025-03-02 23:49:31,862 - INFO - Fetching products from https://www.blendsus.com with keywords: ['jordan', 'New Balance']
+2025-03-02 23:49:35,007 - INFO - 2025-03-02 23:49:31,940 - INFO - Successfully resolved www.blendsus.com to 23.227.38.32 using ['127.0.0.11']
+2025-03-02 23:49:35,107 - INFO - 2025-03-02 23:49:31,949 - INFO - Making initial request to https://www.blendsus.com/products.json?limit=150
+2025-03-02 23:49:35,208 - INFO - 2025-03-02 23:49:32,215 - INFO - Retrieved 150 products from initial request
+2025-03-02 23:49:35,308 - INFO - 2025-03-02 23:49:32,217 - INFO - Found total of 6 matching products
+2025-03-02 23:49:35,408 - INFO - 2025-03-02 23:49:32,218 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 530 WHITE INDIGO
+2025-03-02 23:49:35,509 - INFO - 2025-03-02 23:49:32,426 - INFO - Successfully notified about product: NEW BALANCE 530 WHITE INDIGO
+2025-03-02 23:49:35,609 - INFO - 2025-03-02 23:49:32,426 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1000 NAVY SEA STONE
+2025-03-02 23:49:35,709 - INFO - 2025-03-02 23:49:34,898 - INFO - Successfully notified about product: NEW BALANCE 1000 NAVY SEA STONE
+2025-03-02 23:49:35,809 - INFO - 2025-03-02 23:49:34,898 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906R TEAM ROYAL
+2025-03-02 23:49:37,314 - INFO - 2025-03-02 23:49:37,314 - INFO - Successfully notified about product: NEW BALANCE 1906R TEAM ROYAL

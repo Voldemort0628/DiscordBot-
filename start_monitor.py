@@ -26,6 +26,22 @@ def start_monitor(user_id):
     logging.info(f"Logs will be saved to: {log_file}")
     logging.info(f"Current working directory: {os.getcwd()}")
 
+    # Create process tracking file
+    tracking_file = f"monitor_process_{user_id}.json"
+    process_info = {
+        "user_id": user_id,
+        "start_time": datetime.datetime.now().isoformat(),
+        "log_file": log_file
+    }
+
+    try:
+        with open(tracking_file, "w") as f:
+            json.dump(process_info, f)
+        logging.info(f"Created tracking file: {tracking_file}")
+    except Exception as e:
+        logging.error(f"Failed to create tracking file: {e}")
+        return 1
+
     # Verify required environment variables
     required_env_vars = ['DISCORD_WEBHOOK_URL', 'MONITOR_USER_ID']
     missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
@@ -86,12 +102,22 @@ def start_monitor(user_id):
 
         logging.info(f"Started process with PID {process.pid}")
 
+        # Update tracking file with PID
+        process_info["pid"] = process.pid
+        with open(tracking_file, "w") as f:
+            json.dump(process_info, f)
+        logging.info(f"Updated tracking file with PID: {process.pid}")
+
         # Give the process a moment to start and check its status
         time.sleep(2)
         if process.poll() is not None:
             error_output = process.stdout.read() if process.stdout else "No error output available"
             logging.error(f"Process failed immediately. Exit code: {process.returncode}")
             logging.error(f"Process output: {error_output}")
+            try:
+                os.remove(tracking_file)
+            except OSError:
+                pass
             return 1
 
         # Stream output in real-time
@@ -113,6 +139,14 @@ def start_monitor(user_id):
     except Exception as e:
         logging.error(f"Error running monitor: {e}")
         return 1
+    finally:
+        # Clean up tracking file if process ended
+        if process.poll() is not None:
+            try:
+                os.remove(tracking_file)
+                logging.info(f"Removed tracking file: {tracking_file}")
+            except OSError as e:
+                logging.error(f"Error removing tracking file: {e}")
 
     return process.returncode
 

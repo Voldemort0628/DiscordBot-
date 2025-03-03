@@ -1,0 +1,34 @@
+2025-03-03 04:05:13,879 - INFO - Starting monitor for user ID: 12
+2025-03-03 04:05:13,880 - INFO - Logs will be saved to: monitor_log_12_2025-03-03_04-05-13.txt
+2025-03-03 04:05:13,880 - INFO - Current working directory: /home/runner/workspace
+2025-03-03 04:05:13,883 - INFO - Created tracking file: monitor_process_12.json
+2025-03-03 04:05:13,885 - INFO - Starting monitor for user 12
+2025-03-03 04:05:13,885 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-03 04:05:13,885 - INFO - Current working directory: /home/runner/workspace
+2025-03-03 04:05:13,886 - INFO - Environment variables set for monitor process:
+2025-03-03 04:05:13,886 - INFO - - MONITOR_USER_ID: 12
+2025-03-03 04:05:13,886 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-03 04:05:13,886 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-03 04:05:13,887 - INFO - Started process with PID 4426
+2025-03-03 04:05:13,888 - INFO - Updated tracking file with PID: 4426
+2025-03-03 04:05:16,884 - INFO - 2025-03-03 04:05:16,883 - INFO - Starting monitor main loop
+2025-03-03 04:05:16,984 - INFO - 2025-03-03 04:05:16,884 - INFO - === Starting main monitor loop ===
+2025-03-03 04:05:17,085 - INFO - 2025-03-03 04:05:16,884 - INFO - Got user ID from environment: 12
+2025-03-03 04:05:17,186 - INFO - 2025-03-03 04:05:16,884 - INFO - Creating Flask application...
+2025-03-03 04:05:17,287 - INFO - 2025-03-03 04:05:17,218 - INFO - Running in production mode with Replit redirect URI
+2025-03-03 04:05:17,387 - INFO - 2025-03-03 04:05:17,218 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-03 04:05:17,488 - INFO - 2025-03-03 04:05:17,225 - INFO - Running in production mode with Replit redirect URI
+2025-03-03 04:05:17,588 - INFO - 2025-03-03 04:05:17,225 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-03 04:05:17,688 - INFO - 2025-03-03 04:05:17,230 - INFO - Flask application created successfully
+2025-03-03 04:05:17,789 - INFO - 2025-03-03 04:05:17,230 - INFO - === Entering app context ===
+2025-03-03 04:05:17,889 - INFO - 2025-03-03 04:05:17,230 - INFO - Attempting database operations for user 12
+2025-03-03 04:05:17,989 - INFO - 2025-03-03 04:05:17,230 - INFO - Created new TTLCache for user 12
+2025-03-03 04:05:18,090 - INFO - 2025-03-03 04:05:17,230 - INFO - Attempting to fetch user (attempt 1/3)
+2025-03-03 04:05:18,190 - INFO - 2025-03-03 04:05:17,574 - WARNING - User found but disabled: discord__parris_ (ID: 12)
+2025-03-03 04:05:18,576 - INFO - 2025-03-03 04:05:18,575 - INFO - Attempting to fetch user (attempt 2/3)
+2025-03-03 04:05:18,676 - INFO - 2025-03-03 04:05:18,575 - WARNING - User found but disabled: discord__parris_ (ID: 12)
+2025-03-03 04:05:19,576 - INFO - 2025-03-03 04:05:19,576 - INFO - Attempting to fetch user (attempt 3/3)
+2025-03-03 04:05:19,679 - INFO - 2025-03-03 04:05:19,576 - WARNING - User found but disabled: discord__parris_ (ID: 12)
+2025-03-03 04:05:20,578 - INFO - 2025-03-03 04:05:20,578 - ERROR - User 12 not found or disabled
+2025-03-03 04:05:20,877 - INFO - Monitor process ended
+2025-03-03 04:05:20,878 - INFO - Removed tracking file: monitor_process_12.json

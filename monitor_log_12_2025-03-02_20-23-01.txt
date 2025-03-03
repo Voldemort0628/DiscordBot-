@@ -1,0 +1,245 @@
+2025-03-02 20:23:01,365 - INFO - Starting monitor for user ID: 12
+2025-03-02 20:23:01,365 - INFO - Logs will be saved to: monitor_log_12_2025-03-02_20-23-01.txt
+2025-03-02 20:23:01,365 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 20:23:01,365 - INFO - Created tracking file: monitor_process_12.json
+2025-03-02 20:23:01,365 - INFO - Starting monitor for user 12
+2025-03-02 20:23:01,365 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-02 20:23:01,365 - INFO - Current working directory: /home/runner/workspace
+2025-03-02 20:23:01,366 - INFO - Environment variables set for monitor process:
+2025-03-02 20:23:01,366 - INFO - - MONITOR_USER_ID: 12
+2025-03-02 20:23:01,366 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-02 20:23:01,366 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-02 20:23:01,367 - INFO - Started process with PID 4160
+2025-03-02 20:23:01,367 - INFO - Updated tracking file with PID: 4160
+2025-03-02 20:23:03,368 - INFO - 2025-03-02 20:23:02,337 - INFO - Starting monitor main loop
+2025-03-02 20:23:03,468 - INFO - 2025-03-02 20:23:02,338 - INFO - === Starting main monitor loop ===
+2025-03-02 20:23:03,568 - INFO - 2025-03-02 20:23:02,338 - INFO - Got user ID from environment: 12
+2025-03-02 20:23:03,668 - INFO - 2025-03-02 20:23:02,338 - INFO - Creating Flask application...
+2025-03-02 20:23:03,769 - INFO - 2025-03-02 20:23:02,413 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 20:23:03,869 - INFO - 2025-03-02 20:23:02,413 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 20:23:03,969 - INFO - 2025-03-02 20:23:02,419 - INFO - Running in production mode with Replit redirect URI
+2025-03-02 20:23:04,070 - INFO - 2025-03-02 20:23:02,420 - INFO - Configured Discord redirect URI: https://workspace.preubbb.repl.dev/oauth-callback
+2025-03-02 20:23:04,170 - INFO - 2025-03-02 20:23:02,423 - INFO - Flask application created successfully
+2025-03-02 20:23:04,271 - INFO - 2025-03-02 20:23:02,423 - INFO - === Entering app context ===
+2025-03-02 20:23:04,372 - INFO - 2025-03-02 20:23:02,423 - INFO - Attempting database operations for user 12
+2025-03-02 20:23:04,472 - INFO - 2025-03-02 20:23:02,424 - INFO - Created new TTLCache for user 12
+2025-03-02 20:23:04,572 - INFO - 2025-03-02 20:23:02,424 - INFO - Attempting to fetch user (attempt 1/3)
+2025-03-02 20:23:04,673 - INFO - 2025-03-02 20:23:02,763 - INFO - Found enabled user: discord__parris_ (ID: 12)
+2025-03-02 20:23:04,773 - INFO - 2025-03-02 20:23:02,763 - INFO - Fetching monitor configuration...
+2025-03-02 20:23:04,873 - INFO - 2025-03-02 20:23:02,800 - INFO - Setting up monitor and webhook...
+2025-03-02 20:23:04,974 - INFO - 2025-03-02 20:23:02,801 - INFO - Monitor configuration loaded for user discord__parris_ (ID: 12)
+2025-03-02 20:23:05,074 - INFO - 2025-03-02 20:23:02,802 - INFO - - Discord Webhook: Configured
+2025-03-02 20:23:05,174 - INFO - 2025-03-02 20:23:02,802 - INFO - - Rate limit: 1.0 req/s
+2025-03-02 20:23:05,274 - INFO - 2025-03-02 20:23:02,802 - INFO - - Monitor delay: 30s
+2025-03-02 20:23:05,375 - INFO - 2025-03-02 20:23:02,802 - INFO - === Starting monitoring loop ===
+2025-03-02 20:23:05,475 - INFO - 2025-03-02 20:23:02,802 - INFO -
+2025-03-02 20:23:05,575 - INFO - ---- Monitor Cycle #1 ----
+2025-03-02 20:23:05,675 - INFO - 2025-03-02 20:23:02,930 - INFO - Processing 1 stores for retailer: www.blendsus.com
+2025-03-02 20:23:05,776 - INFO - 2025-03-02 20:23:02,930 - INFO - Monitor heartbeat - User 12 - Active and running
+2025-03-02 20:23:05,876 - INFO - 2025-03-02 20:23:02,932 - INFO - Fetching products from https://www.blendsus.com with keywords: ['jordan', 'nike', 'New Balance']
+2025-03-02 20:23:05,976 - INFO - 2025-03-02 20:23:02,952 - INFO - Successfully resolved www.blendsus.com to 23.227.38.32 using ['127.0.0.11']
+2025-03-02 20:23:06,077 - INFO - 2025-03-02 20:23:02,961 - INFO - Making initial request to https://www.blendsus.com/products.json?limit=150
+2025-03-02 20:23:06,177 - INFO - 2025-03-02 20:23:03,074 - INFO - Retrieved 150 products from initial request
+2025-03-02 20:23:06,278 - INFO - 2025-03-02 20:23:03,076 - INFO - Found total of 6 matching products
+2025-03-02 20:23:06,378 - INFO - 2025-03-02 20:23:03,077 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 530 WHITE INDIGO
+2025-03-02 20:23:06,478 - INFO - 2025-03-02 20:23:03,558 - INFO - Successfully notified about product: NEW BALANCE 530 WHITE INDIGO
+2025-03-02 20:23:06,579 - INFO - 2025-03-02 20:23:03,559 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1000 NAVY SEA STONE
+2025-03-02 20:23:06,679 - INFO - 2025-03-02 20:23:06,415 - INFO - Successfully notified about product: NEW BALANCE 1000 NAVY SEA STONE
+2025-03-02 20:23:06,779 - INFO - 2025-03-02 20:23:06,415 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906R TEAM ROYAL
+2025-03-02 20:23:09,065 - INFO - 2025-03-02 20:23:09,064 - INFO - Successfully notified about product: NEW BALANCE 1906R TEAM ROYAL
+2025-03-02 20:23:09,165 - INFO - 2025-03-02 20:23:09,065 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 740 INCENSE
+2025-03-02 20:23:11,795 - INFO - 2025-03-02 20:23:11,795 - INFO - Successfully notified about product: NEW BALANCE 740 INCENSE
+2025-03-02 20:23:11,896 - INFO - 2025-03-02 20:23:11,795 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906R SILVER
+2025-03-02 20:23:14,444 - INFO - 2025-03-02 20:23:14,444 - INFO - Successfully notified about product: NEW BALANCE 1906R SILVER
+2025-03-02 20:23:14,544 - INFO - 2025-03-02 20:23:14,444 - INFO - [User 12] New product/restock found on https://www.blendsus.com: NEW BALANCE 1906 WHITE
+2025-03-02 20:23:17,160 - INFO - 2025-03-02 20:23:17,159 - INFO - Successfully notified about product: NEW BALANCE 1906 WHITE
+2025-03-02 20:23:17,260 - INFO - 2025-03-02 20:23:17,160 - INFO - Processing 1 stores for retailer: www.deadstock.ca
+2025-03-02 20:23:17,360 - INFO - 2025-03-02 20:23:17,160 - INFO - Fetching products from https://www.deadstock.ca with keywords: ['jordan', 'nike', 'New Balance']
+2025-03-02 20:23:17,461 - INFO - 2025-03-02 20:23:17,281 - INFO - Successfully resolved www.deadstock.ca to 23.227.38.74 using ['127.0.0.11']
+2025-03-02 20:23:17,561 - INFO - 2025-03-02 20:23:17,289 - INFO - Making initial request to https://www.deadstock.ca/products.json?limit=150
+2025-03-02 20:23:17,792 - INFO - 2025-03-02 20:23:17,792 - INFO - Retrieved 150 products from initial request
+2025-03-02 20:23:17,892 - INFO - 2025-03-02 20:23:17,804 - INFO - Found total of 12 matching products
+2025-03-02 20:23:17,993 - INFO - 2025-03-02 20:23:17,806 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Everyday Plus Cushioned Training Crew Socks (6 Pack) White / Black
+2025-03-02 20:23:19,758 - INFO - 2025-03-02 20:23:19,758 - INFO - Successfully notified about product: Nike Everyday Plus Cushioned Training Crew Socks (6 Pack) White / Black
+2025-03-02 20:23:19,860 - INFO - 2025-03-02 20:23:19,759 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Women's Air Rift / Ironstone / Cave Stone
+2025-03-02 20:23:22,428 - INFO - 2025-03-02 20:23:22,428 - INFO - Successfully notified about product: Nike Women's Air Rift / Ironstone / Cave Stone
+2025-03-02 20:23:22,528 - INFO - 2025-03-02 20:23:22,428 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Women's Air Max SNDR Volt / Black - White
+2025-03-02 20:23:25,005 - INFO - 2025-03-02 20:23:25,005 - INFO - Successfully notified about product: Nike Women's Air Max SNDR Volt / Black - White
+2025-03-02 20:23:25,105 - INFO - 2025-03-02 20:23:25,005 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Jordan Women's 1 Zoom CMFT 2 Pine Green / Orange Blaze - Muslin
+2025-03-02 20:23:27,658 - INFO - 2025-03-02 20:23:27,657 - INFO - Successfully notified about product: Jordan Women's 1 Zoom CMFT 2 Pine Green / Orange Blaze - Muslin
+2025-03-02 20:23:27,758 - INFO - 2025-03-02 20:23:27,658 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Air Trainer 1 Hay / Baroque Brown
+2025-03-02 20:23:30,329 - INFO - 2025-03-02 20:23:30,328 - INFO - Successfully notified about product: Nike Air Trainer 1 Hay / Baroque Brown
+2025-03-02 20:23:30,429 - INFO - 2025-03-02 20:23:30,328 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Dunk High Retro PRM Armory Navy / Mineral Slate
+2025-03-02 20:23:32,863 - INFO - 2025-03-02 20:23:32,862 - INFO - Successfully notified about product: Nike Dunk High Retro PRM Armory Navy / Mineral Slate
+2025-03-02 20:23:32,963 - INFO - 2025-03-02 20:23:32,863 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Dunk Low SP Veneer / Deep Blue
+2025-03-02 20:23:35,584 - INFO - 2025-03-02 20:23:35,584 - INFO - Successfully notified about product: Nike Dunk Low SP Veneer / Deep Blue
+2025-03-02 20:23:35,685 - INFO - 2025-03-02 20:23:35,585 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Air Max Dn8 Hyper Pink / Black - Hyper Pink
+2025-03-02 20:23:38,118 - INFO - 2025-03-02 20:23:38,118 - INFO - Successfully notified about product: Nike Air Max Dn8 Hyper Pink / Black - Hyper Pink
+2025-03-02 20:23:38,219 - INFO - 2025-03-02 20:23:38,118 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Women's Air Max SNDR Canyon Gold / Deep Ocean
+2025-03-02 20:23:40,696 - INFO - 2025-03-02 20:23:40,696 - INFO - Successfully notified about product: Nike Women's Air Max SNDR Canyon Gold / Deep Ocean
+2025-03-02 20:23:40,797 - INFO - 2025-03-02 20:23:40,697 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Jordan Women's 1 Retro High OG Metallic Silver / Photon Dust - Sail
+2025-03-02 20:23:43,492 - INFO - 2025-03-02 20:23:43,492 - INFO - Successfully notified about product: Jordan Women's 1 Retro High OG Metallic Silver / Photon Dust - Sail
+2025-03-02 20:23:43,592 - INFO - 2025-03-02 20:23:43,492 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Dunk Low Retro PRM Red Stardust / Summit White - Sanddrift
+2025-03-02 20:23:46,256 - INFO - 2025-03-02 20:23:46,256 - INFO - Successfully notified about product: Nike Dunk Low Retro PRM Red Stardust / Summit White - Sanddrift
+2025-03-02 20:23:46,357 - INFO - 2025-03-02 20:23:46,256 - INFO - [User 12] New product/restock found on https://www.deadstock.ca: Nike Field General 82 SP White / Black - Gum Light Brown
+2025-03-02 20:23:48,978 - INFO - 2025-03-02 20:23:48,978 - INFO - Successfully notified about product: Nike Field General 82 SP White / Black - Gum Light Brown
+2025-03-02 20:23:49,079 - INFO - 2025-03-02 20:23:48,979 - INFO - Processing 1 stores for retailer: www.bowsandarrowsberkeley.com
+2025-03-02 20:23:49,179 - INFO - 2025-03-02 20:23:48,979 - INFO - Fetching products from https://www.bowsandarrowsberkeley.com with keywords: ['jordan', 'nike', 'New Balance']
+2025-03-02 20:23:49,279 - INFO - 2025-03-02 20:23:49,018 - INFO - Successfully resolved www.bowsandarrowsberkeley.com to 23.227.38.74 using ['127.0.0.11']
+2025-03-02 20:23:49,380 - INFO - 2025-03-02 20:23:49,026 - INFO - Making initial request to https://www.bowsandarrowsberkeley.com/products.json?limit=150
+2025-03-02 20:23:49,480 - INFO - 2025-03-02 20:23:49,169 - INFO - Retrieved 150 products from initial request
+2025-03-02 20:23:49,580 - INFO - 2025-03-02 20:23:49,171 - INFO - Found total of 21 matching products
+2025-03-02 20:23:49,681 - INFO - 2025-03-02 20:23:49,172 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: T90 SP (Black/White)
+2025-03-02 20:23:51,617 - INFO - 2025-03-02 20:23:51,617 - INFO - Successfully notified about product: T90 SP (Black/White)
+2025-03-02 20:23:51,717 - INFO - 2025-03-02 20:23:51,617 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: T90 SP (Metallic Silver/Black)
+2025-03-02 20:23:54,502 - INFO - 2025-03-02 20:23:54,501 - INFO - Successfully notified about product: T90 SP (Metallic Silver/Black)
+2025-03-02 20:23:54,602 - INFO - 2025-03-02 20:23:54,502 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air Flightposite QS (Black/Black)
+2025-03-02 20:23:57,255 - INFO - 2025-03-02 20:23:57,254 - INFO - Successfully notified about product: Air Flightposite QS (Black/Black)
+2025-03-02 20:23:57,355 - INFO - 2025-03-02 20:23:57,255 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: LD-1000 SP (Light British Tan)
+2025-03-02 20:24:00,022 - INFO - 2025-03-02 20:24:00,022 - INFO - Successfully notified about product: LD-1000 SP (Light British Tan)
+2025-03-02 20:24:00,123 - INFO - 2025-03-02 20:24:00,023 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Aqua Turf (Deep Night/Laser Orange)
+2025-03-02 20:24:02,638 - INFO - 2025-03-02 20:24:02,637 - INFO - Successfully notified about product: Aqua Turf (Deep Night/Laser Orange)
+2025-03-02 20:24:02,738 - INFO - 2025-03-02 20:24:02,638 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Aqua Turf (Black/Black)
+2025-03-02 20:24:05,413 - INFO - 2025-03-02 20:24:05,413 - INFO - Successfully notified about product: Aqua Turf (Black/Black)
+2025-03-02 20:24:05,513 - INFO - 2025-03-02 20:24:05,413 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air Zoom Spiridon SP (Metallic Silver)
+2025-03-02 20:24:08,074 - INFO - 2025-03-02 20:24:08,073 - INFO - Successfully notified about product: Air Zoom Spiridon SP (Metallic Silver)
+2025-03-02 20:24:08,174 - INFO - 2025-03-02 20:24:08,074 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Women's Air Superfly (Metallic/Black)
+2025-03-02 20:24:10,864 - INFO - 2025-03-02 20:24:10,864 - INFO - Successfully notified about product: Women's Air Superfly (Metallic/Black)
+2025-03-02 20:24:10,964 - INFO - 2025-03-02 20:24:10,864 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Women's LD-1000 (White/Black)
+2025-03-02 20:24:13,567 - INFO - 2025-03-02 20:24:13,567 - INFO - Successfully notified about product: Women's LD-1000 (White/Black)
+2025-03-02 20:24:13,667 - INFO - 2025-03-02 20:24:13,567 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air Tech Challenge II (White/Racer Pink)
+2025-03-02 20:24:16,336 - INFO - 2025-03-02 20:24:16,336 - INFO - Successfully notified about product: Air Tech Challenge II (White/Racer Pink)
+2025-03-02 20:24:16,437 - INFO - 2025-03-02 20:24:16,337 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air 180 (University Blue/Hyper Pink)
+2025-03-02 20:24:19,012 - INFO - 2025-03-02 20:24:19,011 - INFO - Successfully notified about product: Air 180 (University Blue/Hyper Pink)
+2025-03-02 20:24:19,112 - INFO - 2025-03-02 20:24:19,012 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air Zoom Spiridon SP (Black/Metallic Silver)
+2025-03-02 20:24:21,612 - INFO - 2025-03-02 20:24:21,612 - INFO - Successfully notified about product: Air Zoom Spiridon SP (Black/Metallic Silver)
+2025-03-02 20:24:21,713 - INFO - 2025-03-02 20:24:21,612 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air Max SNDR (Safety Orange/White)
+2025-03-02 20:24:24,433 - INFO - 2025-03-02 20:24:24,432 - INFO - Successfully notified about product: Air Max SNDR (Safety Orange/White)
+2025-03-02 20:24:24,533 - INFO - 2025-03-02 20:24:24,433 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Gato (Pine Green)
+2025-03-02 20:24:27,144 - INFO - 2025-03-02 20:24:27,144 - INFO - Successfully notified about product: Gato (Pine Green)
+2025-03-02 20:24:27,244 - INFO - 2025-03-02 20:24:27,144 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Air Zoom Spiridon SP (Silver/Red)
+2025-03-02 20:24:30,076 - INFO - 2025-03-02 20:24:30,076 - INFO - Successfully notified about product: Air Zoom Spiridon SP (Silver/Red)
+2025-03-02 20:24:30,176 - INFO - 2025-03-02 20:24:30,076 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Nike No Finish Line Book
+2025-03-02 20:24:32,736 - INFO - 2025-03-02 20:24:32,736 - INFO - Successfully notified about product: Nike No Finish Line Book
+2025-03-02 20:24:32,836 - INFO - 2025-03-02 20:24:32,736 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: ACG IZY (Black)
+2025-03-02 20:24:35,530 - INFO - 2025-03-02 20:24:35,530 - INFO - Successfully notified about product: ACG IZY (Black)
+2025-03-02 20:24:35,630 - INFO - 2025-03-02 20:24:35,530 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: ACG IZY (Khaki)
+2025-03-02 20:24:38,333 - INFO - 2025-03-02 20:24:38,333 - INFO - Successfully notified about product: ACG IZY (Khaki)
+2025-03-02 20:24:38,433 - INFO - 2025-03-02 20:24:38,333 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: Clogposite (Black/Metallic Gold)
+2025-03-02 20:24:41,152 - INFO - 2025-03-02 20:24:41,152 - INFO - Successfully notified about product: Clogposite (Black/Metallic Gold)
+2025-03-02 20:24:41,252 - INFO - 2025-03-02 20:24:41,152 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: New Balance 860v2 (Black)
+2025-03-02 20:24:43,792 - INFO - 2025-03-02 20:24:43,792 - INFO - Successfully notified about product: New Balance 860v2 (Black)
+2025-03-02 20:24:43,892 - INFO - 2025-03-02 20:24:43,792 - INFO - [User 12] New product/restock found on https://www.bowsandarrowsberkeley.com: New Balance 860v2 (Grey)
+2025-03-02 20:24:46,635 - INFO - 2025-03-02 20:24:46,635 - INFO - Successfully notified about product: New Balance 860v2 (Grey)
+2025-03-02 20:24:46,736 - INFO - 2025-03-02 20:24:46,636 - INFO - Processing 1 stores for retailer: www.featuresneakerboutique.com
+2025-03-02 20:24:46,836 - INFO - 2025-03-02 20:24:46,636 - INFO - Fetching products from https://www.featuresneakerboutique.com with keywords: ['jordan', 'nike', 'New Balance']
+2025-03-02 20:24:46,936 - INFO - 2025-03-02 20:24:46,680 - INFO - Successfully resolved www.featuresneakerboutique.com to 23.227.38.74 using ['127.0.0.11']
+2025-03-02 20:24:47,037 - INFO - 2025-03-02 20:24:46,689 - INFO - Making initial request to https://www.featuresneakerboutique.com/products.json?limit=150
+2025-03-02 20:24:47,149 - INFO - 2025-03-02 20:24:47,149 - INFO - Retrieved 150 products from initial request
+2025-03-02 20:24:47,249 - INFO - 2025-03-02 20:24:47,153 - INFO - Found total of 34 matching products
+2025-03-02 20:24:47,350 - INFO - 2025-03-02 20:24:47,155 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Total 90 III - Black/White/Metallic Silver
+2025-03-02 20:24:49,335 - INFO - 2025-03-02 20:24:49,335 - INFO - Successfully notified about product: Total 90 III - Black/White/Metallic Silver
+2025-03-02 20:24:49,436 - INFO - 2025-03-02 20:24:49,335 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Foamposite One - Black/Volt
+2025-03-02 20:24:51,932 - INFO - 2025-03-02 20:24:51,932 - INFO - Successfully notified about product: Air Foamposite One - Black/Volt
+2025-03-02 20:24:52,032 - INFO - 2025-03-02 20:24:51,932 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Max DN8 - Wolf Grey/Metallic Silver/Off White
+2025-03-02 20:24:54,672 - INFO - 2025-03-02 20:24:54,671 - INFO - Successfully notified about product: Women's Air Max DN8 - Wolf Grey/Metallic Silver/Off White
+2025-03-02 20:24:54,772 - INFO - 2025-03-02 20:24:54,672 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Max DN8 - White/Black
+2025-03-02 20:24:57,406 - INFO - 2025-03-02 20:24:57,406 - INFO - Successfully notified about product: Air Max DN8 - White/Black
+2025-03-02 20:24:57,506 - INFO - 2025-03-02 20:24:57,406 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Max DN8 - Sail/Black/Fossil
+2025-03-02 20:25:00,005 - INFO - 2025-03-02 20:25:00,004 - INFO - Successfully notified about product: Women's Air Max DN8 - Sail/Black/Fossil
+2025-03-02 20:25:00,105 - INFO - 2025-03-02 20:25:00,005 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Force 1 '07 LV8 - Medium Olive/Sail
+2025-03-02 20:25:02,683 - INFO - 2025-03-02 20:25:02,683 - INFO - Successfully notified about product: Air Force 1 '07 LV8 - Medium Olive/Sail
+2025-03-02 20:25:02,784 - INFO - 2025-03-02 20:25:02,683 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Zoom Vomero 5 - Vast Grey/Blue Void/Wolf Grey/Pale Ivory
+2025-03-02 20:25:05,234 - INFO - 2025-03-02 20:25:05,233 - INFO - Successfully notified about product: Zoom Vomero 5 - Vast Grey/Blue Void/Wolf Grey/Pale Ivory
+2025-03-02 20:25:05,334 - INFO - 2025-03-02 20:25:05,234 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 (TD) - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:07,817 - INFO - 2025-03-02 20:25:07,817 - INFO - Successfully notified about product: 9060 (TD) - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:07,917 - INFO - 2025-03-02 20:25:07,817 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 (PS) - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:10,513 - INFO - 2025-03-02 20:25:10,512 - INFO - Successfully notified about product: 9060 (PS) - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:10,613 - INFO - 2025-03-02 20:25:10,513 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 (GS) - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:13,129 - INFO - 2025-03-02 20:25:13,129 - INFO - Successfully notified about product: 9060 (GS) - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:13,230 - INFO - 2025-03-02 20:25:13,129 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 740 - Concord Grape/Purple Fuchsia/Sun Glow/Firefly
+2025-03-02 20:25:15,806 - INFO - 2025-03-02 20:25:15,806 - INFO - Successfully notified about product: 740 - Concord Grape/Purple Fuchsia/Sun Glow/Firefly
+2025-03-02 20:25:15,906 - INFO - 2025-03-02 20:25:15,806 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 9060 - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:18,366 - INFO - 2025-03-02 20:25:18,366 - INFO - Successfully notified about product: 9060 - New Spruce/Peach Blossom/Team Royal
+2025-03-02 20:25:18,467 - INFO - 2025-03-02 20:25:18,366 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 530 - Timberwolf/Linen/Landslide
+2025-03-02 20:25:20,979 - INFO - 2025-03-02 20:25:20,979 - INFO - Successfully notified about product: 530 - Timberwolf/Linen/Landslide
+2025-03-02 20:25:21,079 - INFO - 2025-03-02 20:25:20,979 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Flightposite - Black/Black
+2025-03-02 20:25:23,576 - INFO - 2025-03-02 20:25:23,576 - INFO - Successfully notified about product: Air Flightposite - Black/Black
+2025-03-02 20:25:23,676 - INFO - 2025-03-02 20:25:23,576 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 4 Retro 'Abundance' (TD) - Seafoam/Sail/Metallic Silver
+2025-03-02 20:25:26,098 - INFO - 2025-03-02 20:25:26,097 - INFO - Successfully notified about product: Air Jordan 4 Retro 'Abundance' (TD) - Seafoam/Sail/Metallic Silver
+2025-03-02 20:25:26,198 - INFO - 2025-03-02 20:25:26,098 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 4 Retro 'Abundance' (PS) - Seafoam/Sail/Metallic Silver
+2025-03-02 20:25:28,717 - INFO - 2025-03-02 20:25:28,716 - INFO - Successfully notified about product: Air Jordan 4 Retro 'Abundance' (PS) - Seafoam/Sail/Metallic Silver
+2025-03-02 20:25:28,817 - INFO - 2025-03-02 20:25:28,717 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Jordan 4 Retro 'Abundance'- Seafoam/Sail/Metallic Silver
+2025-03-02 20:25:31,513 - INFO - 2025-03-02 20:25:31,512 - INFO - Successfully notified about product: Women's Air Jordan 4 Retro 'Abundance'- Seafoam/Sail/Metallic Silver
+2025-03-02 20:25:31,613 - INFO - 2025-03-02 20:25:31,513 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 1906A - Olive Juice/Sea Salt/Woodland
+2025-03-02 20:25:34,253 - INFO - 2025-03-02 20:25:34,253 - INFO - Successfully notified about product: 1906A - Olive Juice/Sea Salt/Woodland
+2025-03-02 20:25:34,353 - INFO - 2025-03-02 20:25:34,253 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: 1906A - Inkwell/Sea Salt/Faded Plum
+2025-03-02 20:25:37,015 - INFO - 2025-03-02 20:25:37,015 - INFO - Successfully notified about product: 1906A - Inkwell/Sea Salt/Faded Plum
+2025-03-02 20:25:37,115 - INFO - 2025-03-02 20:25:37,015 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 1 Mid SE (GS) - White/Dark Pony/Black
+2025-03-02 20:25:39,562 - INFO - 2025-03-02 20:25:39,562 - INFO - Successfully notified about product: Air Jordan 1 Mid SE (GS) - White/Dark Pony/Black
+2025-03-02 20:25:39,662 - INFO - 2025-03-02 20:25:39,562 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:42,212 - INFO - 2025-03-02 20:25:42,212 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:42,312 - INFO - 2025-03-02 20:25:42,212 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' (TD) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:44,860 - INFO - 2025-03-02 20:25:44,860 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' (TD) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:44,960 - INFO - 2025-03-02 20:25:44,860 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' (PS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:47,428 - INFO - 2025-03-02 20:25:47,428 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' (PS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:47,528 - INFO - 2025-03-02 20:25:47,428 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 3 Retro 'Lucky Shorts' (GS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:50,207 - INFO - 2025-03-02 20:25:50,207 - INFO - Successfully notified about product: Air Jordan 3 Retro 'Lucky Shorts' (GS) - Summit White/Hydrogen Blue/Legend Blue
+2025-03-02 20:25:50,308 - INFO - 2025-03-02 20:25:50,208 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Max SNDR - Obsidian/Black/Grey Haze
+2025-03-02 20:25:52,821 - INFO - 2025-03-02 20:25:52,821 - INFO - Successfully notified about product: Women's Air Max SNDR - Obsidian/Black/Grey Haze
+2025-03-02 20:25:52,921 - INFO - 2025-03-02 20:25:52,821 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Jordan 1 High Method of Make - Medium Olive/Oil Green/Sea Glass/Seafoam
+2025-03-02 20:25:55,416 - INFO - 2025-03-02 20:25:55,416 - INFO - Successfully notified about product: Women's Air Jordan 1 High Method of Make - Medium Olive/Oil Green/Sea Glass/Seafoam
+2025-03-02 20:25:55,516 - INFO - 2025-03-02 20:25:55,416 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Jordan 1 Mid SE (TD) - White/Dark Pony/Black
+2025-03-02 20:25:58,299 - INFO - 2025-03-02 20:25:58,299 - INFO - Successfully notified about product: Jordan 1 Mid SE (TD) - White/Dark Pony/Black
+2025-03-02 20:25:58,400 - INFO - 2025-03-02 20:25:58,299 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Jordan 1 Mid SE (TD) - Pine Green/Sail/Black/Team Orange
+2025-03-02 20:26:00,939 - INFO - 2025-03-02 20:26:00,939 - INFO - Successfully notified about product: Jordan 1 Mid SE (TD) - Pine Green/Sail/Black/Team Orange
+2025-03-02 20:26:01,040 - INFO - 2025-03-02 20:26:00,940 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 1 Mid (PS) - Black/Off Noir/Summit White
+2025-03-02 20:26:03,648 - INFO - 2025-03-02 20:26:03,647 - INFO - Successfully notified about product: Air Jordan 1 Mid (PS) - Black/Off Noir/Summit White
+2025-03-02 20:26:03,748 - INFO - 2025-03-02 20:26:03,648 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Jordan 1 Low (GS) - Pink Foam/White/Fire Red
+2025-03-02 20:26:06,303 - INFO - 2025-03-02 20:26:06,302 - INFO - Successfully notified about product: Air Jordan 1 Low (GS) - Pink Foam/White/Fire Red
+2025-03-02 20:26:06,403 - INFO - 2025-03-02 20:26:06,303 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Jordan 1 Mid SE - Sea Glass/Oil Green/Metallic Silver
+2025-03-02 20:26:09,061 - INFO - 2025-03-02 20:26:09,061 - INFO - Successfully notified about product: Women's Air Jordan 1 Mid SE - Sea Glass/Oil Green/Metallic Silver
+2025-03-02 20:26:09,162 - INFO - 2025-03-02 20:26:09,062 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Jordan 1 Mid - Photon Dust/White/Atmosphere Grey
+2025-03-02 20:26:11,839 - INFO - 2025-03-02 20:26:11,838 - INFO - Successfully notified about product: Women's Air Jordan 1 Mid - Photon Dust/White/Atmosphere Grey
+2025-03-02 20:26:11,939 - INFO - 2025-03-02 20:26:11,839 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Air Force 1 '07 - White/Light Khaki
+2025-03-02 20:26:14,493 - INFO - 2025-03-02 20:26:14,493 - INFO - Successfully notified about product: Air Force 1 '07 - White/Light Khaki
+2025-03-02 20:26:14,593 - INFO - 2025-03-02 20:26:14,493 - INFO - [User 12] New product/restock found on https://www.featuresneakerboutique.com: Women's Air Force 1 '07 Next Nature - White/Elemental Pink
+2025-03-02 20:26:17,187 - INFO - 2025-03-02 20:26:17,187 - INFO - Successfully notified about product: Women's Air Force 1 '07 Next Nature - White/Elemental Pink
+2025-03-02 20:26:17,287 - INFO - 2025-03-02 20:26:17,188 - INFO - Processing 1 stores for retailer: www.apbstore.com
+2025-03-02 20:26:17,388 - INFO - 2025-03-02 20:26:17,188 - INFO - Fetching products from https://www.apbstore.com with keywords: ['jordan', 'nike', 'New Balance']
+2025-03-02 20:26:17,488 - INFO - 2025-03-02 20:26:17,198 - INFO - Successfully resolved www.apbstore.com to 23.227.38.74 using ['127.0.0.11']
+2025-03-02 20:26:17,588 - INFO - 2025-03-02 20:26:17,206 - INFO - Making initial request to https://www.apbstore.com/products.json?limit=150
+2025-03-02 20:26:17,689 - INFO - 2025-03-02 20:26:17,532 - INFO - Retrieved 150 products from initial request
+2025-03-02 20:26:17,789 - INFO - 2025-03-02 20:26:17,534 - INFO - Found total of 77 matching products
+2025-03-02 20:26:17,889 - INFO - 2025-03-02 20:26:17,535 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 12 RETRO "FLU GAME" TD
+2025-03-02 20:26:19,759 - INFO - 2025-03-02 20:26:19,758 - INFO - Successfully notified about product: AIR JORDAN 12 RETRO "FLU GAME" TD
+2025-03-02 20:26:19,860 - INFO - 2025-03-02 20:26:19,759 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 12 RETRO "FLU GAME" PS
+2025-03-02 20:26:22,527 - INFO - 2025-03-02 20:26:22,526 - INFO - Successfully notified about product: AIR JORDAN 12 RETRO "FLU GAME" PS
+2025-03-02 20:26:22,627 - INFO - 2025-03-02 20:26:22,527 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 12 RETRO "FLU GAME" GS
+2025-03-02 20:26:25,184 - INFO - 2025-03-02 20:26:25,184 - INFO - Successfully notified about product: AIR JORDAN 12 RETRO "FLU GAME" GS
+2025-03-02 20:26:25,285 - INFO - 2025-03-02 20:26:25,184 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 12 RETRO "FLU GAME"
+2025-03-02 20:26:27,750 - INFO - 2025-03-02 20:26:27,750 - INFO - Successfully notified about product: AIR JORDAN 12 RETRO "FLU GAME"
+2025-03-02 20:26:27,851 - INFO - 2025-03-02 20:26:27,750 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR MAX SUNDER "SILVER/BLACK"
+2025-03-02 20:26:30,386 - INFO - 2025-03-02 20:26:30,385 - INFO - Successfully notified about product: AIR MAX SUNDER "SILVER/BLACK"
+2025-03-02 20:26:30,486 - INFO - 2025-03-02 20:26:30,386 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 1 LOW 85 "ROYAL"
+2025-03-02 20:26:32,906 - INFO - 2025-03-02 20:26:32,906 - INFO - Successfully notified about product: AIR JORDAN 1 LOW 85 "ROYAL"
+2025-03-02 20:26:33,007 - INFO - 2025-03-02 20:26:32,907 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "LUCKY SHORTS" TD
+2025-03-02 20:26:35,701 - INFO - 2025-03-02 20:26:35,701 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "LUCKY SHORTS" TD
+2025-03-02 20:26:35,801 - INFO - 2025-03-02 20:26:35,701 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "LUCKY SHORTS" PS
+2025-03-02 20:26:38,427 - INFO - 2025-03-02 20:26:38,427 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "LUCKY SHORTS" PS
+2025-03-02 20:26:38,527 - INFO - 2025-03-02 20:26:38,427 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "LUCKY SHORTS" GS
+2025-03-02 20:26:41,143 - INFO - 2025-03-02 20:26:41,143 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "LUCKY SHORTS" GS
+2025-03-02 20:26:41,244 - INFO - 2025-03-02 20:26:41,144 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 3 RETRO "LUCKY SHORTS"
+2025-03-02 20:26:43,994 - INFO - 2025-03-02 20:26:43,994 - INFO - Successfully notified about product: AIR JORDAN 3 RETRO "LUCKY SHORTS"
+2025-03-02 20:26:44,094 - INFO - 2025-03-02 20:26:43,994 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR FOAMPOSITE ONE "GALAXY"
+2025-03-02 20:26:46,723 - INFO - 2025-03-02 20:26:46,723 - INFO - Successfully notified about product: AIR FOAMPOSITE ONE "GALAXY"
+2025-03-02 20:26:46,823 - INFO - 2025-03-02 20:26:46,723 - INFO - [User 12] New product/restock found on https://www.apbstore.com: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD"
+2025-03-02 20:26:49,245 - INFO - 2025-03-02 20:26:49,245 - INFO - Successfully notified about product: KOBE PROTRO V "EGGPLANT/ BLACK/ METALLIC GOLD"
+2025-03-02 20:26:49,345 - INFO - 2025-03-02 20:26:49,245 - INFO - [User 12] New product/restock found on https://www.apbstore.com: KOBE PROTRO VI ALL-STAR WEEKEND "SAIL/BLACK/LIGHT BONE"
+2025-03-02 20:26:51,938 - INFO - 2025-03-02 20:26:51,938 - INFO - Successfully notified about product: KOBE PROTRO VI ALL-STAR WEEKEND "SAIL/BLACK/LIGHT BONE"
+2025-03-02 20:26:52,039 - INFO - 2025-03-02 20:26:51,939 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM KD IV "HYPER ROYAL/SUMMIT WHITE/METALLIC GOLD"
+2025-03-02 20:26:54,717 - INFO - 2025-03-02 20:26:54,717 - INFO - Successfully notified about product: ZOOM KD IV "HYPER ROYAL/SUMMIT WHITE/METALLIC GOLD"
+2025-03-02 20:26:54,818 - INFO - 2025-03-02 20:26:54,717 - INFO - [User 12] New product/restock found on https://www.apbstore.com: ZOOM KD IV "MVP"
+2025-03-02 20:26:57,473 - INFO - 2025-03-02 20:26:57,473 - INFO - Successfully notified about product: ZOOM KD IV "MVP"
+2025-03-02 20:26:57,574 - INFO - 2025-03-02 20:26:57,473 - INFO - [User 12] New product/restock found on https://www.apbstore.com: AIR JORDAN 1 RETRO HIGH OG "BLACK TOE REIMAGINED" TD
+2025-03-02 20:27:00,251 - INFO - 2025-03-02 20:27:00,251 - INFO - Successfully notified about product: AIR JORDAN 1 RETRO HIGH OG "BLACK TOE REIMAGINED" TD

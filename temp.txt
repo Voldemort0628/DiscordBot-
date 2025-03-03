@@ -1,0 +1,28 @@
+    async def _cleanup_old_monitor(self, user_id):
+        """Cleanup any existing monitor process for the user"""
+        try:
+            pid = await self._get_monitor_pid(user_id)
+            if pid:
+                try:
+                    process = psutil.Process(pid)
+                    process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                        logger.info(f"Successfully terminated old process {pid}")
+                    except psutil.TimeoutExpired:
+                        process.kill()
+                        logger.info(f"Force killed old process {pid}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    logger.error(f"Error terminating old process {pid}: {e}")
+
+            # Clean up any stale tracking file
+            tracking_file = f"monitor_process_{user_id}.json"
+            if os.path.exists(tracking_file):
+                try:
+                    os.remove(tracking_file)
+                    logger.info(f"Removed stale tracking file: {tracking_file}")
+                except OSError as e:
+                    logger.error(f"Error removing tracking file: {e}")
+
+        except Exception as e:
+            logger.error(f"Error during monitor cleanup: {e}")

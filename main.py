@@ -198,6 +198,7 @@ async def monitor_store(store_url: str, keywords: List[str], monitor: ShopifyMon
 
 async def main():
     try:
+        # Add more detailed startup logging near the start of the monitoring loop
         logging.info("=== Starting main monitor loop ===")
         start_time = time.time()
         last_restart = start_time
