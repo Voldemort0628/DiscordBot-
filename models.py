@@ -4,6 +4,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
+def init_db():
+    """Initialize database and create all tables"""
+    try:
+        db.create_all()
+        return True
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        return False
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)

@@ -24,11 +24,30 @@ logging.basicConfig(
 
 logger = logging.getLogger('Monitor')
 
-# Early startup logging
+# Early environment check logging
 logger.info("=== Monitor Starting ===")
-logger.info(f"Python version: {sys.version}")
-logger.info(f"Current directory: {os.getcwd()}")
-logger.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH')}")
+logger.info(f"Environment variables:")
+logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+logging.info(f"Command line args: {sys.argv}")
+logging.info(f"Current working directory: {os.getcwd()}")
+logging.info(f"Python path: {sys.path}")
+logging.info("=====================")
+
+if not os.environ.get('MONITOR_USER_ID'):
+    logging.error("Missing required environment variables: MONITOR_USER_ID")
+    logging.error("Current environment:")
+    logging.error(f"MONITOR_USER_ID: Not set")
+    logging.error(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+    logging.error(f"Command line args: {sys.argv}")
+    sys.exit(1)
+
+# Add the current directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+    logging.info(f"Added current directory to Python path: {current_dir}")
+
 
 try:
     logger.info("Importing required modules...")
@@ -42,9 +61,11 @@ except ImportError as e:
     sys.exit(1)
 
 async def monitor_store(store_url, keywords, monitor, webhook, seen_products, user_id):
+    """Monitors a single store for products"""
     try:
         products = await monitor.async_fetch_products(store_url, keywords)
         if not products:
+            logger.warning(f"No products found for {store_url}")
             return 0
 
         new_products = 0
@@ -101,6 +122,14 @@ async def main():
         logger.info("Initializing database...")
         init_db()
         logger.info("Database initialized successfully")
+
+        # Verify database connection
+        try:
+            db.session.execute('SELECT 1')
+            logger.info("Database connection test successful")
+        except Exception as e:
+            logger.error(f"Database connection test failed: {e}")
+            return 1
 
         while True:
             try:

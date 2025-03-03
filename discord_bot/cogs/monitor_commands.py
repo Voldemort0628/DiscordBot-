@@ -7,7 +7,7 @@ import sys
 import psycopg2
 import time
 from discord.ext import commands
-import discord 
+import discord
 from datetime import datetime, timedelta
 import subprocess
 from werkzeug.security import generate_password_hash
@@ -188,7 +188,7 @@ class MonitorCommands(commands.Cog):
 
         running = self._is_monitor_running(user_id)
         status_msg = f"Monitor Status: {'✅ Running' if running else '❌ Stopped'}"
-        
+
         try:
             await ctx.send(status_msg)
         except discord.Forbidden:
@@ -262,6 +262,8 @@ class MonitorCommands(commands.Cog):
         logger.info(f"Starting monitor for user {user_id}")
         logger.info(f"Main script path: {main_script}")
         logger.info(f"Current directory: {current_dir}")
+        logger.info(f"Python executable: {sys.executable}")
+        logger.info(f"Current working directory: {os.getcwd()}")
 
         # Verify file exists
         if not os.path.exists(main_script):
@@ -282,6 +284,7 @@ class MonitorCommands(commands.Cog):
         logger.info(f"MONITOR_USER_ID: {process_env.get('MONITOR_USER_ID')}")
         logger.info(f"DISCORD_WEBHOOK_URL: {'Set' if process_env.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
         logger.info(f"PYTHONPATH: {process_env.get('PYTHONPATH')}")
+        logger.info(f"DATABASE_URL: {'Set' if process_env.get('DATABASE_URL') else 'Not set'}")
 
         try:
             # Start the monitor process with output capture
@@ -296,16 +299,25 @@ class MonitorCommands(commands.Cog):
                 cwd=current_dir
             )
 
-            # Give the process a moment to start and capture initial output
+            logger.info(f"Started monitor process with PID {process.pid}")
+
+            # Give the process a moment to start and check its status
             await asyncio.sleep(2)
 
-            # Check process status and capture output
+            # Check if process is still running
             if process.poll() is not None:
-                output = process.stdout.read() if process.stdout else "No output available"
-                logger.error(f"Process failed to start. Exit code: {process.returncode}")
-                logger.error(f"Process output: {output}")
-                await status_message.edit(content=f"❌ Monitor failed to start. Check logs for details.")
-                return
+                # Process has already terminated
+                try:
+                    stdout_data, stderr_data = process.communicate()
+                    output = stdout_data or stderr_data or "No output available"
+                    logger.error(f"Process failed to start. Exit code: {process.returncode}")
+                    logger.error(f"Process output: {output}")
+                    await status_message.edit(content=f"❌ Monitor failed to start: {output}")
+                    return
+                except Exception as e:
+                    logger.error(f"Error reading process output: {e}")
+                    await status_message.edit(content="❌ Monitor failed to start")
+                    return
 
             # Verify monitor is actually running with retries
             max_retries = 3
@@ -320,19 +332,19 @@ class MonitorCommands(commands.Cog):
                     return
 
                 logger.info(f"Waiting for monitor to start (attempt {attempt + 1}/{max_retries})")
-
-                # Check process output for errors
-                if process.stdout:
-                    line = process.stdout.readline()
-                    if line:
-                        logger.info(f"Monitor output: {line.strip()}")
-
                 await asyncio.sleep(1)
 
             # If we get here, the monitor didn't start properly
-            output = process.stdout.read() if process.stdout else "No output available"
-            logger.error(f"Monitor process failed to initialize properly. Output: {output}")
-            await status_message.edit(content="❌ Monitor failed to initialize. Check logs for details.")
+            try:
+                process.terminate()
+                await asyncio.sleep(1)
+                if process.poll() is None:
+                    process.kill()
+            except Exception as e:
+                logger.error(f"Error terminating failed monitor process: {e}")
+
+            logger.error("Monitor process failed to initialize properly")
+            await status_message.edit(content="❌ Monitor failed to initialize properly")
 
         except Exception as e:
             logger.error(f"Error starting monitor: {str(e)}", exc_info=True)
