@@ -214,17 +214,6 @@ class MonitorCommands(commands.Cog):
                 return None
             user_id, webhook_url = result
 
-            cur.execute(
-                'SELECT COUNT(*) FROM store WHERE user_id = %s AND enabled = true;',
-                (user_id,)
-            )
-            store_count = cur.fetchone()[0]
-            if store_count == 0:
-                return "❌ You need to add some stores first!"
-
-            if self._is_monitor_running(user_id):
-                return "Monitor is already running!"
-
             # Set webhook_url if not set
             webhook_url = webhook_url if webhook_url else os.environ.get('DISCORD_WEBHOOK_URL')
 
@@ -238,7 +227,7 @@ class MonitorCommands(commands.Cog):
 
         result = await self._handle_db_operation(db_start)
         if not result:
-            await ctx.send("❌ Error starting monitor.")
+            await ctx.send("❌ You need to verify first. Use `!verify`")
             return
         if isinstance(result, str):
             await ctx.send(result)
@@ -251,10 +240,8 @@ class MonitorCommands(commands.Cog):
         await self._cleanup_old_monitor(user_id)
 
         # Get the absolute path to start_monitor.py
-        start_script = os.path.abspath(os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'start_monitor.py'
-        ))
+        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        start_script = os.path.join(current_dir, 'start_monitor.py')
 
         # Verify files exist
         if not os.path.exists(start_script):
@@ -271,7 +258,7 @@ class MonitorCommands(commands.Cog):
             'DISCORD_WEBHOOK_URL': webhook_url,
             'MONITOR_USER_ID': str(user_id),
             'PYTHONUNBUFFERED': '1',
-            'PYTHONPATH': os.getcwd()
+            'PYTHONPATH': current_dir
         })
 
         try:
@@ -284,12 +271,14 @@ class MonitorCommands(commands.Cog):
                 bufsize=1,
                 env=process_env,
                 start_new_session=True,
-                cwd=os.path.dirname(start_script)
+                cwd=current_dir
             )
 
             await asyncio.sleep(2)
             if process.poll() is not None:
-                await status_message.edit(content="❌ Monitor failed to start.")
+                output = process.stdout.read() if process.stdout else "No output available"
+                logger.error(f"Process failed to start: {output}")
+                await status_message.edit(content="❌ Monitor failed to start. Check logs for details.")
                 return
 
             if self._is_monitor_running(user_id):

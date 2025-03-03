@@ -1,0 +1,36 @@
+2025-03-03 06:06:58,912 - INFO - Starting monitor for user ID: 12
+2025-03-03 06:06:58,913 - INFO - Logs will be saved to: monitor_log_12_2025-03-03_06-06-58.txt
+2025-03-03 06:06:58,913 - INFO - Current working directory: /home/runner/workspace
+2025-03-03 06:06:58,913 - INFO - Created tracking file: monitor_process_12.json
+2025-03-03 06:06:58,913 - INFO - Starting monitor for user 12
+2025-03-03 06:06:58,913 - INFO - main.py path: /home/runner/workspace/main.py
+2025-03-03 06:06:58,914 - INFO - Current working directory: /home/runner/workspace
+2025-03-03 06:06:58,914 - INFO - Environment variables set for monitor process:
+2025-03-03 06:06:58,914 - INFO - - MONITOR_USER_ID: 12
+2025-03-03 06:06:58,914 - INFO - - DISCORD_WEBHOOK_URL: Set
+2025-03-03 06:06:58,914 - INFO - - PYTHONPATH: /home/runner/workspace
+2025-03-03 06:06:58,915 - INFO - Started process with PID 3336
+2025-03-03 06:06:58,915 - INFO - Updated tracking file with PID: 3336
+2025-03-03 06:07:00,916 - INFO - 2025-03-03 06:07:00,256 - INFO - Starting monitor main loop
+2025-03-03 06:07:01,016 - INFO - 2025-03-03 06:07:00,259 - INFO - === Starting main monitor loop ===
+2025-03-03 06:07:01,117 - INFO - 2025-03-03 06:07:00,259 - INFO - Got user ID from environment: 12
+2025-03-03 06:07:01,217 - INFO - 2025-03-03 06:07:00,259 - INFO - Creating Flask application...
+2025-03-03 06:07:01,318 - INFO - 2025-03-03 06:07:00,260 - ERROR - Fatal error: No module named 'app'
+2025-03-03 06:07:30,290 - INFO - 2025-03-03 06:07:30,290 - INFO - Got user ID from environment: 12
+2025-03-03 06:07:30,390 - INFO - 2025-03-03 06:07:30,290 - INFO - Creating Flask application...
+2025-03-03 06:07:30,491 - INFO - 2025-03-03 06:07:30,290 - ERROR - Fatal error: No module named 'app'
+2025-03-03 06:08:00,320 - INFO - 2025-03-03 06:08:00,320 - INFO - Got user ID from environment: 12
+2025-03-03 06:08:00,421 - INFO - 2025-03-03 06:08:00,320 - INFO - Creating Flask application...
+2025-03-03 06:08:00,521 - INFO - 2025-03-03 06:08:00,321 - ERROR - Fatal error: No module named 'app'
+2025-03-03 06:08:30,351 - INFO - 2025-03-03 06:08:30,351 - INFO - Got user ID from environment: 12
+2025-03-03 06:08:30,452 - INFO - 2025-03-03 06:08:30,351 - INFO - Creating Flask application...
+2025-03-03 06:08:30,552 - INFO - 2025-03-03 06:08:30,352 - ERROR - Fatal error: No module named 'app'
+2025-03-03 06:09:00,381 - INFO - 2025-03-03 06:09:00,381 - INFO - Got user ID from environment: 12
+2025-03-03 06:09:00,482 - INFO - 2025-03-03 06:09:00,381 - INFO - Creating Flask application...
+2025-03-03 06:09:00,582 - INFO - 2025-03-03 06:09:00,382 - ERROR - Fatal error: No module named 'app'
+2025-03-03 06:09:30,412 - INFO - 2025-03-03 06:09:30,412 - INFO - Got user ID from environment: 12
+2025-03-03 06:09:30,512 - INFO - 2025-03-03 06:09:30,412 - INFO - Creating Flask application...
+2025-03-03 06:09:30,613 - INFO - 2025-03-03 06:09:30,412 - ERROR - Fatal error: No module named 'app'
+2025-03-03 06:10:00,443 - INFO - 2025-03-03 06:10:00,442 - INFO - Got user ID from environment: 12
+2025-03-03 06:10:00,543 - INFO - 2025-03-03 06:10:00,443 - INFO - Creating Flask application...
+2025-03-03 06:10:00,643 - INFO - 2025-03-03 06:10:00,443 - ERROR - Fatal error: No module named 'app'
