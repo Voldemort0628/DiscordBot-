@@ -2,12 +2,16 @@ import os
 import sys
 import logging
 import asyncio
+import signal
+import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 import json
+from typing import Dict, Set, List
 
 # Configure logging
 log_dir = Path('logs')
@@ -21,7 +25,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_path),
-        logging.StreamHandler(sys.stdout)  # Log to stdout for subprocess capture
+        logging.StreamHandler(sys.stdout)
     ]
 )
 
@@ -62,39 +66,130 @@ except ImportError as e:
 # Initialize SQLAlchemy with app
 db.init_app(app)
 
-async def monitor_store(store_url, keywords, monitor, webhook, seen_products, user_id):
-    """Monitors a single store for products"""
-    try:
-        logger.info(f"Monitoring store: {store_url}")
-        logger.info(f"Using webhook URL: {'Set' if webhook.webhook_url else 'Not set'}")
+# Global state to track seen products
+seen_products: Dict[str, Set[str]] = {}
 
-        products = await monitor.async_fetch_products(store_url, keywords)
-        if not products:
-            logger.warning(f"No products found for {store_url}")
+class MonitorManager:
+    def __init__(self, user_id: int, webhook_url: str, config: MonitorConfig):
+        self.user_id = user_id
+        self.webhook = RateLimitedDiscordWebhook(webhook_url=webhook_url)
+        self.monitor = ShopifyMonitor(rate_limit=config.rate_limit)
+        self.config = config
+        self.running = True
+        self.last_health_check = time.time()
+        self.stores_status = {}
+
+        # Set up signal handlers
+        signal.signal(signal.SIGTERM, self.handle_shutdown)
+        signal.signal(signal.SIGINT, self.handle_shutdown)
+
+    def handle_shutdown(self, signum, frame):
+        """Handle shutdown signals gracefully"""
+        logger.info(f"Received shutdown signal {signum}")
+        self.running = False
+
+    async def monitor_store(self, store_url: str, keywords: List[str]) -> int:
+        """Monitor a single store with improved error handling and retry logic"""
+        if store_url not in seen_products:
+            seen_products[store_url] = set()
+
+        store_key = f"{store_url}-{self.user_id}"
+
+        try:
+            logger.info(f"Monitoring store: {store_url}")
+
+            # Update store status
+            self.stores_status[store_key] = {
+                'last_check': time.time(),
+                'status': 'checking'
+            }
+
+            products = await self.monitor.async_fetch_products(store_url, keywords)
+
+            if not products:
+                self.stores_status[store_key]['status'] = 'no_products'
+                return 0
+
+            new_products = 0
+            for product in products:
+                product_id = f"{store_url}-{product['title']}-{self.user_id}"
+                if product_id not in seen_products[store_url]:
+                    try:
+                        webhook_success = await self.webhook.send_product_notification(product)
+                        if webhook_success:
+                            seen_products[store_url].add(product_id)
+                            new_products += 1
+                            logger.info(f"New product found and notified: {product['title']}")
+                        else:
+                            logger.error(f"Failed to send webhook for {product['title']}")
+                    except Exception as webhook_error:
+                        logger.error(f"Webhook error for {product['title']}: {webhook_error}", exc_info=True)
+
+            self.stores_status[store_key]['status'] = 'success'
+            return new_products
+
+        except Exception as e:
+            logger.error(f"Error monitoring {store_url}: {e}", exc_info=True)
+            self.stores_status[store_key]['status'] = 'error'
+            self.stores_status[store_key]['last_error'] = str(e)
             return 0
 
-        new_products = 0
-        for product in products:
-            product_id = f"{store_url}-{product['title']}-{user_id}"
-            if product_id not in seen_products:
-                try:
-                    # Add debug logging for webhook sending
-                    logger.info(f"Attempting to send webhook for product: {product['title']}")
-                    webhook_success = await webhook.send_product_notification(product)
-                    if webhook_success:
-                        seen_products.add(product_id)
-                        new_products += 1
-                        logger.info(f"Successfully sent webhook for product: {product['title']}")
-                    else:
-                        logger.error(f"Failed to send webhook for product: {product['title']}")
-                except Exception as webhook_error:
-                    logger.error(f"Error sending webhook for {product['title']}: {webhook_error}", exc_info=True)
+    async def monitor_stores(self, stores: List[Store], keywords: List[str]):
+        """Monitor multiple stores concurrently"""
+        while self.running:
+            try:
+                # Create monitoring tasks for all stores
+                tasks = [
+                    self.monitor_store(store.url, keywords)
+                    for store in stores
+                    if store.enabled
+                ]
 
-        return new_products
+                if not tasks:
+                    logger.info("No active stores to monitor")
+                    await asyncio.sleep(self.config.monitor_delay)
+                    continue
 
-    except Exception as e:
-        logger.error(f"Error monitoring {store_url}: {e}", exc_info=True)
-        return 0
+                # Execute all monitoring tasks concurrently
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Process results and handle any exceptions
+                total_new = 0
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Error monitoring store {stores[i].url}: {result}")
+                    elif isinstance(result, int):
+                        total_new += result
+
+                # Adaptive delay based on results
+                delay = self.config.monitor_delay * (0.25 if total_new > 0 else 1.0)
+                await asyncio.sleep(max(0.05, delay))
+
+                # Perform health check
+                await self.health_check()
+
+            except Exception as e:
+                logger.error(f"Error in monitor loop: {e}", exc_info=True)
+                await asyncio.sleep(5)
+
+    async def health_check(self):
+        """Perform periodic health checks"""
+        current_time = time.time()
+        if current_time - self.last_health_check >= 300:  # Every 5 minutes
+            logger.info("Performing health check")
+
+            # Log monitoring statistics
+            logger.info(f"Stores status: {json.dumps(self.stores_status, indent=2)}")
+
+            # Check database connection
+            try:
+                with app.app_context():
+                    db.session.execute(text('SELECT 1'))
+                    logger.info("Database connection healthy")
+            except Exception as e:
+                logger.error(f"Database health check failed: {e}")
+
+            self.last_health_check = current_time
 
 async def main():
     # Early validation of required environment variables
@@ -115,29 +210,15 @@ async def main():
         logger.error(f"Invalid MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
         return 1
 
-    seen_products = set()
-
-    # Create process tracking file
-    tracking_file = f"monitor_process_{user_id}.json"
-    try:
-        with open(tracking_file, 'w') as f:
-            json.dump({
-                'pid': os.getpid(),
-                'start_time': datetime.now().isoformat()
-            }, f)
-        logger.info(f"Created tracking file for PID {os.getpid()}")
-    except Exception as e:
-        logger.error(f"Failed to create tracking file: {e}")
+    # Initialize tracking file and monitoring state
+    seen_products.clear()
 
     try:
         with app.app_context():
             # Initialize database and verify connection
             try:
-                # Create tables if they don't exist
                 db.create_all()
                 logger.info("Database initialized successfully")
-
-                # Verify database connection using text()
                 db.session.execute(text('SELECT 1'))
                 logger.info("Database connection test successful")
             except Exception as e:
@@ -145,6 +226,7 @@ async def main():
                 return 1
 
             logger.info("Starting main monitoring loop...")
+
             while True:
                 try:
                     # Get user configuration
@@ -162,21 +244,8 @@ async def main():
                     logger.info(f"Rate limit: {config.rate_limit} req/s")
                     logger.info(f"Monitor delay: {config.monitor_delay}s")
 
-                    # Initialize monitor with webhook test
-                    monitor = ShopifyMonitor(rate_limit=config.rate_limit)
-                    webhook = RateLimitedDiscordWebhook(webhook_url=webhook_url)
-
-                    # Test webhook before starting monitoring
-                    test_payload = {
-                        "username": "Monitor Test",
-                        "content": "Monitor starting up - webhook test message"
-                    }
-                    try:
-                        await webhook._send_webhook_with_backoff(test_payload)
-                        logger.info("Initial webhook test successful")
-                    except Exception as e:
-                        logger.error(f"Initial webhook test failed: {e}", exc_info=True)
-                        # Continue anyway, as the webhook might work later
+                    # Create monitor manager
+                    manager = MonitorManager(user_id, webhook_url, config)
 
                     while True:
                         try:
@@ -197,24 +266,8 @@ async def main():
 
                             logger.info(f"Monitoring {len(stores)} stores with {len(keywords)} keywords")
 
-                            # Monitor stores in parallel
-                            tasks = []
-                            for store in stores:
-                                task = monitor_store(
-                                    store.url,
-                                    keywords,
-                                    monitor,
-                                    webhook,
-                                    seen_products,
-                                    user_id
-                                )
-                                tasks.append(task)
-
-                            results = await asyncio.gather(*tasks, return_exceptions=True)
-                            total_new = sum(r for r in results if isinstance(r, int))
-
-                            delay = config.monitor_delay * (0.25 if total_new > 0 else 1.0)
-                            await asyncio.sleep(max(0.05, delay))
+                            # Start concurrent monitoring
+                            await manager.monitor_stores(stores, keywords)
 
                         except OperationalError as e:
                             logger.error(f"Database connection error: {e}", exc_info=True)
@@ -223,20 +276,16 @@ async def main():
 
                         except Exception as e:
                             logger.error(f"Error in monitor loop: {e}", exc_info=True)
+                            traceback.print_exc()
                             await asyncio.sleep(2)
 
                 except Exception as e:
                     logger.error(f"Fatal error: {e}", exc_info=True)
                     await asyncio.sleep(5)
 
-    finally:
-        # Cleanup tracking file on exit
-        try:
-            if os.path.exists(tracking_file):
-                os.remove(tracking_file)
-                logger.info("Removed tracking file")
-        except Exception as e:
-            logger.error(f"Error removing tracking file: {e}")
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
+        return 1
 
 if __name__ == "__main__":
     try:
