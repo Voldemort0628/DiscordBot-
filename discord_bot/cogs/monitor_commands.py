@@ -260,7 +260,7 @@ class MonitorCommands(commands.Cog):
 
         result = await self._handle_db_operation(db_start)
         if not result:
-            await ctx.send("❌ Error starting monitor.")
+            await ctx.send("❌ You need to verify first.")
             return
         if isinstance(result, str):
             await ctx.send(result)
@@ -272,11 +272,9 @@ class MonitorCommands(commands.Cog):
         # Cleanup any existing monitor process first
         await self._cleanup_old_monitor(user_id)
 
-        # Get the absolute path to start_monitor.py
-        start_script = os.path.abspath(os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'start_monitor.py'
-        ))
+        # Get absolute paths
+        bot_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        start_script = os.path.join(bot_dir, 'start_monitor.py')
 
         if not os.path.exists(start_script):
             logger.error(f"Cannot find start_monitor.py at {start_script}")
@@ -284,37 +282,48 @@ class MonitorCommands(commands.Cog):
             return
 
         try:
-            # Setup environment
+            # Setup environment with all required variables
             process_env = os.environ.copy()
             process_env.update({
                 'DISCORD_WEBHOOK_URL': webhook_url,
                 'MONITOR_USER_ID': str(user_id),
                 'PYTHONUNBUFFERED': '1',
-                'PYTHONPATH': os.getcwd(),
-                'DATABASE_URL': os.environ.get('DATABASE_URL', '')
+                'DATABASE_URL': os.environ.get('DATABASE_URL', ''),
+                'PYTHONPATH': bot_dir,  # Set PYTHONPATH to project root
+                'MONITOR_API_KEY': os.environ.get('MONITOR_API_KEY', '')  # Ensure API key is passed
             })
 
-            # Start the monitor process
-            process = subprocess.Popen(
-                [sys.executable, start_script, str(user_id)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                env=process_env,
-                start_new_session=True,
-                cwd=os.path.dirname(start_script)
-            )
+            logger.info(f"Starting monitor process for user {user_id}")
+            logger.info(f"Working directory: {bot_dir}")
+            logger.info(f"Start script: {start_script}")
+            logger.info(f"Environment: PYTHONPATH={bot_dir}")
+            logger.info(f"Webhook URL configured: {'Set' if webhook_url else 'Not set'}")
+
+            # Start the monitor process with proper error handling
+            try:
+                process = subprocess.Popen(
+                    [sys.executable, start_script, str(user_id)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    env=process_env,
+                    start_new_session=True,
+                    cwd=bot_dir
+                )
+            except Exception as e:
+                logger.error(f"Failed to start monitor process: {e}", exc_info=True)
+                await status_message.edit(content=f"❌ Failed to start monitor: {str(e)}")
+                return
 
             logger.info(f"Started monitor process with PID {process.pid}")
 
             # Give the process a moment to start and check its status
             await asyncio.sleep(2)
 
-            # Check process status
+            # Check process status and capture output
             poll_result = process.poll()
             if poll_result is not None:
-                # Process has already terminated
                 stdout, stderr = process.communicate()
                 error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
                 logger.error(f"Process failed with exit code {poll_result}")

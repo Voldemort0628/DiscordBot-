@@ -20,6 +20,11 @@ async def test_webhook(webhook_url):
                     "name": "Status",
                     "value": "Test Successful",
                     "inline": True
+                },
+                {
+                    "name": "Test Time",
+                    "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "inline": True
                 }
             ]
         }]

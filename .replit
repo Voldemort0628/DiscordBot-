@@ -19,6 +19,10 @@ args = "Continuous Monitor"
 task = "workflow.run"
 args = "Discord Bot"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Webhook Test"
+
 [[workflows.workflow]]
 name = "Monitor"
 author = 9248373
@@ -70,6 +74,20 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python discord_bot/bot.py"
+
+[[workflows.workflow]]
+name = "Webhook Test"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python test_discord.py https://discord.com/api/webhooks/1345624968070824099/41_PR3u7Q9zTTnClsoiYLuDGQ7vMmXwfALNMLGlHDGVo5OU7dmi13D8fvM-_-uLWmFDz"
 
 [deployment]
 run = ["sh", "-c", "gunicorn --workers 3 --worker-class gthread --threads 3 --timeout 120 --preload --max-requests 1000 --max-requests-jitter 50 --bind 0.0.0.0:5000 wsgi:app"]

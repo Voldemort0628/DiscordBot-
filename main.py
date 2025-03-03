@@ -65,6 +65,9 @@ db.init_app(app)
 async def monitor_store(store_url, keywords, monitor, webhook, seen_products, user_id):
     """Monitors a single store for products"""
     try:
+        logger.info(f"Monitoring store: {store_url}")
+        logger.info(f"Using webhook URL: {'Set' if webhook.webhook_url else 'Not set'}")
+
         products = await monitor.async_fetch_products(store_url, keywords)
         if not products:
             logger.warning(f"No products found for {store_url}")
@@ -74,10 +77,18 @@ async def monitor_store(store_url, keywords, monitor, webhook, seen_products, us
         for product in products:
             product_id = f"{store_url}-{product['id']}-{user_id}"
             if product_id not in seen_products:
-                if await webhook.send_product_notification(product):
-                    seen_products.add(product_id)
-                    new_products += 1
-                    logger.info(f"New product found: {product['title']}")
+                try:
+                    # Add debug logging for webhook sending
+                    logger.info(f"Attempting to send webhook for product: {product['title']}")
+                    webhook_success = await webhook.send_product_notification(product)
+                    if webhook_success:
+                        seen_products.add(product_id)
+                        new_products += 1
+                        logger.info(f"Successfully sent webhook for product: {product['title']}")
+                    else:
+                        logger.error(f"Failed to send webhook for product: {product['title']}")
+                except Exception as webhook_error:
+                    logger.error(f"Error sending webhook for {product['title']}: {webhook_error}", exc_info=True)
 
         return new_products
 
@@ -91,6 +102,11 @@ async def main():
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
     if missing_vars:
         logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        return 1
+
+    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
+    if not webhook_url or not webhook_url.startswith('https://discord.com/api/webhooks/'):
+        logger.error("Invalid Discord webhook URL")
         return 1
 
     try:
@@ -146,9 +162,21 @@ async def main():
                     logger.info(f"Rate limit: {config.rate_limit} req/s")
                     logger.info(f"Monitor delay: {config.monitor_delay}s")
 
-                    # Initialize monitor
+                    # Initialize monitor with webhook test
                     monitor = ShopifyMonitor(rate_limit=config.rate_limit)
-                    webhook = RateLimitedDiscordWebhook(webhook_url=os.environ.get('DISCORD_WEBHOOK_URL'))
+                    webhook = RateLimitedDiscordWebhook(webhook_url=webhook_url)
+
+                    # Test webhook before starting monitoring
+                    test_payload = {
+                        "username": "Monitor Test",
+                        "content": "Monitor starting up - webhook test message"
+                    }
+                    try:
+                        await webhook._send_webhook_with_backoff(test_payload)
+                        logger.info("Initial webhook test successful")
+                    except Exception as e:
+                        logger.error(f"Initial webhook test failed: {e}", exc_info=True)
+                        # Continue anyway, as the webhook might work later
 
                     while True:
                         try:
