@@ -279,16 +279,10 @@ class MonitorCommands(commands.Cog):
             'DATABASE_URL': os.environ.get('DATABASE_URL', '')
         })
 
-        logger.info("Environment variables for monitor process:")
-        logger.info(f"MONITOR_USER_ID: {process_env.get('MONITOR_USER_ID')}")
-        logger.info(f"DISCORD_WEBHOOK_URL: {'Set' if process_env.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
-        logger.info(f"DATABASE_URL: {'Set' if process_env.get('DATABASE_URL') else 'Not set'}")
-        logger.info(f"PYTHONPATH: {process_env.get('PYTHONPATH')}")
-
         try:
             # Start the monitor process
             process = subprocess.Popen(
-                [sys.executable, start_script],
+                [sys.executable, start_script, str(user_id)],  # Pass user_id as argument
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

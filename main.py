@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
+import json
 
 # Configure logging
 log_dir = Path('logs')
@@ -36,19 +38,6 @@ logger.info(f"Current working directory: {os.getcwd()}")
 logger.info(f"Python path: {sys.path}")
 logger.info("=====================")
 
-# Early validation of required environment variables
-required_vars = ['MONITOR_USER_ID', 'DISCORD_WEBHOOK_URL', 'DATABASE_URL']
-missing_vars = [var for var in required_vars if not os.environ.get(var)]
-if missing_vars:
-    logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-    sys.exit(1)
-
-try:
-    user_id = int(os.environ.get('MONITOR_USER_ID'))
-except ValueError:
-    logger.error(f"Invalid MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
-    sys.exit(1)
-
 # Create Flask app
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -65,7 +54,6 @@ try:
     from discord_webhook import RateLimitedDiscordWebhook
     from models import db, User, Store, Keyword, MonitorConfig
     from sqlalchemy.exc import OperationalError
-    from sqlalchemy import text
     logger.info("All modules imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import required modules: {e}", exc_info=True)
@@ -98,12 +86,24 @@ async def monitor_store(store_url, keywords, monitor, webhook, seen_products, us
         return 0
 
 async def main():
+    # Early validation of required environment variables
+    required_vars = ['MONITOR_USER_ID', 'DISCORD_WEBHOOK_URL', 'DATABASE_URL']
+    missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    if missing_vars:
+        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        return 1
+
+    try:
+        user_id = int(os.environ.get('MONITOR_USER_ID'))
+    except ValueError:
+        logger.error(f"Invalid MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+        return 1
+
     seen_products = set()
 
     # Create process tracking file
     tracking_file = f"monitor_process_{user_id}.json"
     try:
-        import json
         with open(tracking_file, 'w') as f:
             json.dump({
                 'pid': os.getpid(),
@@ -115,9 +115,9 @@ async def main():
 
     try:
         with app.app_context():
-            # Initialize database
-            logger.info("Initializing database...")
+            # Initialize database and verify connection
             try:
+                # Create tables if they don't exist
                 db.create_all()
                 logger.info("Database initialized successfully")
 
