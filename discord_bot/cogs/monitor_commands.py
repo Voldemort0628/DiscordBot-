@@ -771,7 +771,7 @@ class MonitorCommands(commands.Cog):
                         if pid:
                             try:
                                 process = psutil.Process(pid)
-                                # Verify it's our process before terminating
+                                # Verify it's our process before terminating 
                                 if ('python' in process.name().lower() and
                                     str(user_id) == process.environ().get('MONITOR_USER_ID')):
                                     process.terminate()
@@ -780,11 +780,35 @@ class MonitorCommands(commands.Cog):
                                         logger.info(f"Successfully terminated process {pid}")
                                     except psutil.TimeoutExpired:
                                         process.kill()
-                                        logger.info(f"Force killed old process {pid}")
-                                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                    logger.error(f"Error terminating process {pid}: {e}")
+                                        logger.info(f"Force killed process {pid}")
+                                    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                        logger.warning(f"Error terminating process {pid}: {e}")
+                                        try:
+                                            process.kill()
+                                        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                            logger.error(f"Could not kill process {pid}: {e}")
                 except (json.JSONDecodeError, OSError) as e:
                     logger.error(f"Error reading tracking file: {e}")
+                    try:
+                        os.remove(tracking_file)
+                    except OSError as e:
+                        logger.error(f"Could not remove tracking file: {e}")
+
+            # Check for duplicated process in system
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
+                try:
+                    if ('python' in proc.name().lower() and
+                        str(user_id) == proc.environ().get('MONITOR_USER_ID')):
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=3)
+                        except psutil.TimeoutExpired:
+                            proc.kill() 
+                            logger.info(f"Force killed duplicated process {proc.pid}")
+                        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                            logger.warning(f"Error cleaning up process {proc.pid}: {e}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
 
             # Clean up any stale tracking file
             if os.path.exists(tracking_file):
@@ -1651,7 +1675,7 @@ class MonitorCommands(commands.Cog):
             cur.execute(
                 'SELECT 1 FROM store WHERE user_id = %s AND url = %s;',
                 (user_id, store_url)
-            ))
+            )
             if cur.fetchone():
                 return "⚠️ Store already exists."
 
