@@ -54,6 +54,8 @@ class MonitorCommands(commands.Cog):
         """Check if monitor is running for user"""
         try:
             tracking_file = f"monitor_process_{user_id}.json"
+
+            # First check tracking file
             if os.path.exists(tracking_file):
                 try:
                     with open(tracking_file) as f:
@@ -65,21 +67,41 @@ class MonitorCommands(commands.Cog):
                                 if process.is_running():
                                     cmdline = ' '.join(process.cmdline())
                                     env = process.environ()
-                                    if ('python' in process.name().lower() and
-                                        str(user_id) == env.get('MONITOR_USER_ID')):
-                                        return True
+                                    # More strict process verification
+                                    is_python = 'python' in process.name().lower()
+                                    has_monitor_script = 'start_monitor.py' in cmdline
+                                    correct_user = str(user_id) == env.get('MONITOR_USER_ID')
+
+                                    if is_python and has_monitor_script and correct_user:
+                                        # Verify process is actually doing something
+                                        if process.cpu_percent() > 0 or process.status() != 'sleeping':
+                                            return True
                             except (psutil.NoSuchProcess, psutil.AccessDenied):
                                 pass
+                    # If we get here, process not found or not valid
                     os.remove(tracking_file)
                 except (json.JSONDecodeError, OSError):
                     if os.path.exists(tracking_file):
                         os.remove(tracking_file)
 
-            # Check running processes
+            # Double check running processes even if tracking file wasn't found
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'environ']):
                 try:
-                    if ('python' in proc.name().lower() and
-                        str(user_id) == proc.environ().get('MONITOR_USER_ID')):
+                    cmdline = ' '.join(proc.info['cmdline'] or [])
+                    env = proc.info.get('environ', {})
+                    # Strict process verification
+                    is_python = 'python' in proc.info['name'].lower()
+                    has_monitor_script = 'start_monitor.py' in cmdline
+                    correct_user = str(user_id) == env.get('MONITOR_USER_ID')
+
+                    if is_python and has_monitor_script and correct_user:
+                        # Create tracking file if it doesn't exist
+                        if not os.path.exists(tracking_file):
+                            with open(tracking_file, 'w') as f:
+                                json.dump({
+                                    'pid': proc.info['pid'],
+                                    'start_time': datetime.now().isoformat()
+                                }, f)
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -256,33 +278,25 @@ class MonitorCommands(commands.Cog):
             'start_monitor.py'
         ))
 
-        # Enhanced logging of paths and environment
-        logger.info(f"Starting monitor for user {user_id}")
-        logger.info(f"Start monitor script path: {start_script}")
-        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        logger.info(f"Current directory: {current_dir}")
-        logger.info(f"Python executable: {sys.executable}")
-
-        # Verify file exists
         if not os.path.exists(start_script):
             logger.error(f"Cannot find start_monitor.py at {start_script}")
             await status_message.edit(content="❌ Error: start_monitor.py not found")
             return
 
-        # Setup environment
-        process_env = os.environ.copy()
-        process_env.update({
-            'DISCORD_WEBHOOK_URL': webhook_url,
-            'MONITOR_USER_ID': str(user_id),
-            'PYTHONUNBUFFERED': '1',
-            'PYTHONPATH': os.getcwd(),
-            'DATABASE_URL': os.environ.get('DATABASE_URL', '')
-        })
-
         try:
+            # Setup environment
+            process_env = os.environ.copy()
+            process_env.update({
+                'DISCORD_WEBHOOK_URL': webhook_url,
+                'MONITOR_USER_ID': str(user_id),
+                'PYTHONUNBUFFERED': '1',
+                'PYTHONPATH': os.getcwd(),
+                'DATABASE_URL': os.environ.get('DATABASE_URL', '')
+            })
+
             # Start the monitor process
             process = subprocess.Popen(
-                [sys.executable, start_script, str(user_id)],  # Pass user_id as argument
+                [sys.executable, start_script, str(user_id)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -301,23 +315,11 @@ class MonitorCommands(commands.Cog):
             poll_result = process.poll()
             if poll_result is not None:
                 # Process has already terminated
-                try:
-                    stdout, stderr = process.communicate()
-                    error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
-                    logger.error(f"Process failed with exit code {poll_result}")
-                    logger.error(f"Process output: {error_output}")
-
-                    # Format error message for user
-                    error_lines = error_output.split('\n')
-                    if len(error_lines) > 3:
-                        error_msg = '\n'.join(error_lines[-3:])  # Last 3 lines of error
-                    else:
-                        error_msg = error_output
-
-                    await status_message.edit(content=f"❌ Monitor failed to start:\n```\n{error_msg}\n```")
-                except Exception as e:
-                    logger.error(f"Error reading process output: {e}")
-                    await status_message.edit(content="❌ Monitor failed to start (unknown error)")
+                stdout, stderr = process.communicate()
+                error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
+                logger.error(f"Process failed with exit code {poll_result}")
+                logger.error(f"Process output: {error_output}")
+                await status_message.edit(content=f"❌ Monitor failed to start:\n```\n{error_output}\n```")
                 return
 
             # Verify monitor is actually running with retries
@@ -326,37 +328,14 @@ class MonitorCommands(commands.Cog):
                 if self._is_monitor_running(user_id):
                     await status_message.edit(content="✅ Monitor started successfully!")
                     return
-
                 logger.info(f"Waiting for monitor to start (attempt {attempt + 1}/{max_retries})")
                 await asyncio.sleep(1)
 
             # If we get here, the monitor didn't start properly
-            try:
-                # Try to get any output before terminating
-                process.terminate()
-                try:
-                    stdout, stderr = process.communicate(timeout=2)
-                    error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
-                    logger.error(f"Monitor failed to initialize properly. Output: {error_output}")
-
-                    # Format error message for user
-                    error_lines = error_output.split('\n')
-                    if len(error_lines) > 3:
-                        error_msg = '\n'.join(error_lines[-3:])  # Last 3 lines of error
-                    else:
-                        error_msg = error_output
-
-                    await status_message.edit(content=f"❌ Monitor failed to initialize:\n```\n{error_msg}\n```")
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    stdout, stderr = process.communicate()
-                    logger.error("Monitor process failed to initialize and had to be killed")
-                    await status_message.edit(content="❌ Monitor failed to initialize (process timeout)")
-            except Exception as e:
-                logger.error(f"Error cleaning up monitor process: {e}")
-                if process.poll() is None:
-                    process.kill()
-                await status_message.edit(content="❌ Monitor failed to initialize (unknown error)")
+            stdout, stderr = process.communicate(timeout=2)
+            error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
+            logger.error(f"Monitor failed to initialize properly. Output: {error_output}")
+            await status_message.edit(content=f"❌ Monitor failed to initialize:\n```\n{error_output}\n```")
 
         except Exception as e:
             logger.error(f"Error starting monitor: {str(e)}", exc_info=True)

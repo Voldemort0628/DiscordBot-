@@ -5,6 +5,7 @@ import os
 import datetime
 import logging
 import json
+import psutil
 
 def start_monitor(user_id):
     # Configure logging
@@ -17,24 +18,28 @@ def start_monitor(user_id):
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)  # Log to stdout for subprocess capture
+            logging.StreamHandler(sys.stdout)
         ]
     )
 
     logging.info(f"=== Starting monitor process for user ID: {user_id} ===")
-    logging.info(f"Logs will be saved to: {log_file}")
     logging.info(f"Current working directory: {os.getcwd()}")
     logging.info(f"Python executable: {sys.executable}")
-    logging.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
+    logging.info(f"Python path: {os.environ.get('PYTHONPATH', 'Not set')}")
 
     # Verify environment variables
     required_vars = ['DISCORD_WEBHOOK_URL', 'DATABASE_URL']
+    missing_vars = []
     for var in required_vars:
         value = os.environ.get(var)
         logging.info(f"Checking {var}: {'Set' if value else 'Not set'}")
         if not value:
-            logging.error(f"Missing required environment variable: {var}")
-            return 1
+            missing_vars.append(var)
+
+    if missing_vars:
+        error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+        logging.error(error_msg)
+        return 1
 
     # Create process tracking file
     tracking_file = f"monitor_process_{user_id}.json"
@@ -53,7 +58,7 @@ def start_monitor(user_id):
         logging.error(f"Failed to create tracking file: {e}", exc_info=True)
         return 1
 
-    # Get the absolute path to main.py relative to this file
+    # Get the absolute path to main.py
     main_script = os.path.abspath(os.path.join(
         os.path.dirname(__file__),
         'main.py'
@@ -70,8 +75,8 @@ def start_monitor(user_id):
         process_env = os.environ.copy()
         process_env.update({
             'MONITOR_USER_ID': str(user_id),
-            'PYTHONUNBUFFERED': '1',  # Ensure output is not buffered
-            'PYTHONPATH': os.getcwd()  # Add current directory to Python path
+            'PYTHONUNBUFFERED': '1',
+            'PYTHONPATH': os.getcwd()
         })
 
         # Start the monitor process
@@ -86,19 +91,19 @@ def start_monitor(user_id):
             cwd=os.path.dirname(main_script)
         )
 
-        logging.info(f"Started process with PID {process.pid}")
+        logging.info(f"Started monitor process with PID {process.pid}")
 
         # Update tracking file with PID
         process_info["pid"] = process.pid
         with open(tracking_file, "w") as f:
             json.dump(process_info, f)
-        logging.info(f"Updated tracking file with PID: {process.pid}")
 
         # Give the process a moment to start and check its status
         time.sleep(2)
-        if process.poll() is not None:
+        poll_result = process.poll()
+        if poll_result is not None:
             error_output = process.stdout.read() if process.stdout else "No error output available"
-            logging.error(f"Process failed immediately. Exit code: {process.returncode}")
+            logging.error(f"Process failed immediately. Exit code: {poll_result}")
             logging.error(f"Process output: {error_output}")
             try:
                 os.remove(tracking_file)
