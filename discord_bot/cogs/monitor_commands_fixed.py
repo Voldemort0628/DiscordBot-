@@ -187,9 +187,8 @@ class MonitorCommands(commands.Cog):
             return
 
         running = self._is_monitor_running(user_id)
-        status_msg = f"Monitor Status: {'✅ Running' if running else '❌ Stopped'}"
-        
         try:
+            status_msg = f"Monitor Status: {'✅ Running' if running else '❌ Stopped'}"
             await ctx.send(status_msg)
         except discord.Forbidden:
             try:
@@ -309,9 +308,7 @@ class MonitorCommands(commands.Cog):
         async def db_stop(conn, cur):
             cur.execute('SELECT id FROM "user" WHERE discord_user_id = %s;', (str(ctx.author.id),))
             result = cur.fetchone()
-            if not result:
-                return None
-            return result[0]
+            return result[0] if result else None
 
         user_id = await self._handle_db_operation(db_stop)
         if not user_id:

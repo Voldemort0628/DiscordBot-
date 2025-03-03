@@ -6,9 +6,9 @@ import logging
 import psutil
 import time
 
-# Configure logging
+# Configure logging with more detailed format
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Temporarily set to DEBUG for more info
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('discord_bot.log'),
@@ -62,7 +62,25 @@ class MonitorBot(commands.Bot):
         )
 
     async def setup_hook(self):
-        await self.load_extension('cogs.monitor_commands')
+        """Initialize bot extensions"""
+        logger.info("Setting up bot extensions...")
+        try:
+            cogs_dir = os.path.join(os.path.dirname(__file__), 'cogs')
+            monitor_commands_path = os.path.join(cogs_dir, 'monitor_commands.py')
+
+            if os.path.exists(monitor_commands_path):
+                logger.info(f"Found monitor_commands.py at {monitor_commands_path}")
+                await self.load_extension('cogs.monitor_commands')
+                logger.info("Successfully loaded monitor_commands cog")
+            else:
+                logger.error(f"Could not find monitor_commands.py in {cogs_dir}")
+        except Exception as e:
+            logger.error(f"Error loading extensions: {str(e)}", exc_info=True)
+
+    async def on_ready(self):
+        """Log when the bot is ready"""
+        logger.info(f"Bot is ready and logged in as {self.user}")
+        logger.info(f"Bot is in {len(self.guilds)} guilds")
 
     async def on_command(self, ctx):
         """Log when a command is received"""
@@ -96,7 +114,11 @@ def main():
 
     bot = MonitorBot()
     logger.info(f"Starting single bot instance (PID: {os.getpid()})")
-    bot.run(token)
+    try:
+        bot.run(token, log_handler=None)  # Disable default discord.py logging
+    except Exception as e:
+        logger.error(f"Failed to start bot: {str(e)}", exc_info=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
