@@ -61,26 +61,33 @@ class MonitorCommands(commands.Cog):
                     with open(tracking_file) as f:
                         data = json.load(f)
                         pid = data.get('pid')
-                        if pid:
-                            try:
-                                process = psutil.Process(pid)
-                                if process.is_running():
-                                    cmdline = ' '.join(process.cmdline())
-                                    env = process.environ()
-                                    # More strict process verification
-                                    is_python = 'python' in process.name().lower()
-                                    has_monitor_script = 'start_monitor.py' in cmdline
-                                    correct_user = str(user_id) == env.get('MONITOR_USER_ID')
+                        child_pid = data.get('child_pid')
 
-                                    if is_python and has_monitor_script and correct_user:
-                                        # Verify process is actually doing something
-                                        if process.cpu_percent() > 0 or process.status() != 'sleeping':
+                        # Check both parent and child processes
+                        for check_pid in [pid, child_pid]:
+                            if check_pid:
+                                try:
+                                    process = psutil.Process(check_pid)
+                                    if process.is_running():
+                                        # More strict process verification
+                                        cmdline = ' '.join(process.cmdline())
+                                        env = process.environ()
+
+                                        is_python = 'python' in process.name().lower()
+                                        has_monitor_script = any(s in cmdline for s in ['start_monitor.py', 'main.py'])
+                                        correct_user = str(user_id) == env.get('MONITOR_USER_ID')
+
+                                        if is_python and has_monitor_script and correct_user:
+                                            logger.info(f"Found running monitor process: PID {check_pid}")
                                             return True
-                            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                pass
-                    # If we get here, process not found or not valid
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    continue
+
+                    # If we get here, no valid process found
+                    logger.info(f"No valid monitor process found in tracking file for user {user_id}")
                     os.remove(tracking_file)
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError) as e:
+                    logger.error(f"Error reading tracking file: {e}")
                     if os.path.exists(tracking_file):
                         os.remove(tracking_file)
 
@@ -89,25 +96,30 @@ class MonitorCommands(commands.Cog):
                 try:
                     cmdline = ' '.join(proc.info['cmdline'] or [])
                     env = proc.info.get('environ', {})
-                    # Strict process verification
+
                     is_python = 'python' in proc.info['name'].lower()
-                    has_monitor_script = 'start_monitor.py' in cmdline
+                    has_monitor_script = any(s in cmdline for s in ['start_monitor.py', 'main.py'])
                     correct_user = str(user_id) == env.get('MONITOR_USER_ID')
 
                     if is_python and has_monitor_script and correct_user:
+                        logger.info(f"Found orphaned monitor process: PID {proc.info['pid']}")
                         # Create tracking file if it doesn't exist
                         if not os.path.exists(tracking_file):
                             with open(tracking_file, 'w') as f:
                                 json.dump({
                                     'pid': proc.info['pid'],
-                                    'start_time': datetime.now().isoformat()
+                                    'start_time': datetime.now().isoformat(),
+                                    'log_file': f"monitor_log_{user_id}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
                                 }, f)
                         return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    logger.warning(f"Error checking process: {e}")
                     continue
+
+            logger.info(f"No monitor process found for user {user_id}")
             return False
         except Exception as e:
-            logger.error(f"Error checking monitor status: {e}")
+            logger.error(f"Error checking monitor status: {e}", exc_info=True)
             return False
 
     async def _cleanup_old_monitor(self, user_id):
@@ -118,19 +130,23 @@ class MonitorCommands(commands.Cog):
                 try:
                     with open(tracking_file) as f:
                         data = json.load(f)
-                        pid = data.get('pid')
-                        if pid:
-                            try:
-                                process = psutil.Process(pid)
-                                if ('python' in process.name().lower() and
-                                    str(user_id) == process.environ().get('MONITOR_USER_ID')):
-                                    process.terminate()
-                                    try:
-                                        process.wait(timeout=3)
-                                    except psutil.TimeoutExpired:
-                                        process.kill()
-                            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                logger.warning(f"Error terminating process {pid}: {e}")
+                        processes_to_check = [data.get('pid'), data.get('child_pid')]
+
+                        for pid in processes_to_check:
+                            if pid:
+                                try:
+                                    process = psutil.Process(pid)
+                                    if ('python' in process.name().lower() and
+                                        str(user_id) == process.environ().get('MONITOR_USER_ID')):
+                                        logger.info(f"Terminating monitor process: PID {pid}")
+                                        process.terminate()
+                                        try:
+                                            process.wait(timeout=3)
+                                        except psutil.TimeoutExpired:
+                                            logger.warning(f"Process {pid} did not terminate, killing it")
+                                            process.kill()
+                                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                    logger.warning(f"Error terminating process {pid}: {e}")
                 except (json.JSONDecodeError, OSError) as e:
                     logger.error(f"Error reading tracking file: {e}")
 
@@ -138,11 +154,12 @@ class MonitorCommands(commands.Cog):
             if os.path.exists(tracking_file):
                 try:
                     os.remove(tracking_file)
+                    logger.info(f"Removed tracking file for user {user_id}")
                 except OSError as e:
                     logger.error(f"Could not remove tracking file: {e}")
 
         except Exception as e:
-            logger.error(f"Error in cleanup process: {e}")
+            logger.error(f"Error in cleanup process: {e}", exc_info=True)
 
     @commands.command(name='verify', help="Verify yourself to use the monitor")
     async def verify_user(self, ctx):
@@ -236,6 +253,7 @@ class MonitorCommands(commands.Cog):
                 return None
             user_id, webhook_url = result
 
+            # Check if stores are configured
             cur.execute(
                 'SELECT COUNT(*) FROM store WHERE user_id = %s AND enabled = true;',
                 (user_id,)
@@ -247,8 +265,10 @@ class MonitorCommands(commands.Cog):
             if self._is_monitor_running(user_id):
                 return "Monitor is already running!"
 
-            # Set webhook_url if not set
+            # Use webhook_url from database or fallback to environment
             webhook_url = webhook_url if webhook_url else os.environ.get('DISCORD_WEBHOOK_URL')
+            if not webhook_url or not webhook_url.startswith('https://discord.com/api/webhooks/'):
+                return "❌ Invalid webhook URL configuration"
 
             # Update user status
             cur.execute(
@@ -297,6 +317,7 @@ class MonitorCommands(commands.Cog):
             logger.info(f"Working directory: {bot_dir}")
             logger.info(f"Start script: {start_script}")
             logger.info(f"Environment: PYTHONPATH={bot_dir}")
+            logger.info(f"Monitor User ID: {user_id}")
             logger.info(f"Webhook URL configured: {'Set' if webhook_url else 'Not set'}")
 
             # Start the monitor process with proper error handling

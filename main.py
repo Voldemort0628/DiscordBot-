@@ -75,7 +75,7 @@ async def monitor_store(store_url, keywords, monitor, webhook, seen_products, us
 
         new_products = 0
         for product in products:
-            product_id = f"{store_url}-{product['id']}-{user_id}"
+            product_id = f"{store_url}-{product['title']}-{user_id}"
             if product_id not in seen_products:
                 try:
                     # Add debug logging for webhook sending
