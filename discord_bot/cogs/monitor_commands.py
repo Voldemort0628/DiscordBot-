@@ -214,23 +214,19 @@ class MonitorCommands(commands.Cog):
                 return None
             user_id, webhook_url = result
 
-            # Check if monitor is already running
-            if self._is_monitor_running(user_id):
-                return "Monitor is already running!"
-
-            # Check if stores are configured
             cur.execute(
                 'SELECT COUNT(*) FROM store WHERE user_id = %s AND enabled = true;',
                 (user_id,)
             )
             store_count = cur.fetchone()[0]
             if store_count == 0:
-                return "❌ You need to add some stores first! Use !preset_stores or !add_store"
+                return "❌ You need to add some stores first!"
+
+            if self._is_monitor_running(user_id):
+                return "Monitor is already running!"
 
             # Set webhook_url if not set
             webhook_url = webhook_url if webhook_url else os.environ.get('DISCORD_WEBHOOK_URL')
-            if not webhook_url:
-                return "❌ Discord webhook URL not configured. Use !set_webhook"
 
             # Update user status
             cur.execute(
@@ -238,17 +234,17 @@ class MonitorCommands(commands.Cog):
                 (user_id,)
             )
             conn.commit()
-            return (user_id, webhook_url, store_count)
+            return (user_id, webhook_url)
 
         result = await self._handle_db_operation(db_start)
         if not result:
-            await ctx.send("❌ You need to verify first. Use `!verify`")
+            await ctx.send("❌ Error starting monitor.")
             return
         if isinstance(result, str):
             await ctx.send(result)
             return
 
-        user_id, webhook_url, store_count = result
+        user_id, webhook_url = result
         status_message = await ctx.send("⌛ Starting monitor, please wait...")
 
         # Cleanup any existing monitor process first
@@ -263,7 +259,6 @@ class MonitorCommands(commands.Cog):
         logger.info(f"Main script path: {main_script}")
         logger.info(f"Current directory: {current_dir}")
         logger.info(f"Python executable: {sys.executable}")
-        logger.info(f"Current working directory: {os.getcwd()}")
 
         # Verify file exists
         if not os.path.exists(main_script):
@@ -271,27 +266,28 @@ class MonitorCommands(commands.Cog):
             await status_message.edit(content="❌ Error: main.py not found")
             return
 
-        # Setup environment with enhanced logging
+        # Setup environment with required variables
         process_env = os.environ.copy()
         process_env.update({
             'DISCORD_WEBHOOK_URL': webhook_url,
             'MONITOR_USER_ID': str(user_id),
             'PYTHONUNBUFFERED': '1',
-            'PYTHONPATH': current_dir
+            'PYTHONPATH': current_dir,
+            'DATABASE_URL': os.environ.get('DATABASE_URL', '')
         })
 
         logger.info("Environment variables for monitor process:")
         logger.info(f"MONITOR_USER_ID: {process_env.get('MONITOR_USER_ID')}")
         logger.info(f"DISCORD_WEBHOOK_URL: {'Set' if process_env.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
-        logger.info(f"PYTHONPATH: {process_env.get('PYTHONPATH')}")
         logger.info(f"DATABASE_URL: {'Set' if process_env.get('DATABASE_URL') else 'Not set'}")
+        logger.info(f"PYTHONPATH: {process_env.get('PYTHONPATH')}")
 
         try:
             # Start the monitor process with output capture
             process = subprocess.Popen(
                 [sys.executable, main_script],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
                 env=process_env,
@@ -304,31 +300,34 @@ class MonitorCommands(commands.Cog):
             # Give the process a moment to start and check its status
             await asyncio.sleep(2)
 
-            # Check if process is still running
-            if process.poll() is not None:
+            # Check process status
+            poll_result = process.poll()
+            if poll_result is not None:
                 # Process has already terminated
                 try:
-                    stdout_data, stderr_data = process.communicate()
-                    output = stdout_data or stderr_data or "No output available"
-                    logger.error(f"Process failed to start. Exit code: {process.returncode}")
-                    logger.error(f"Process output: {output}")
-                    await status_message.edit(content=f"❌ Monitor failed to start: {output}")
-                    return
+                    stdout, stderr = process.communicate()
+                    error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
+                    logger.error(f"Process failed with exit code {poll_result}")
+                    logger.error(f"Process output: {error_output}")
+
+                    # Format error message for user
+                    error_lines = error_output.split('\n')
+                    if len(error_lines) > 3:
+                        error_msg = '\n'.join(error_lines[-3:])  # Last 3 lines of error
+                    else:
+                        error_msg = error_output
+
+                    await status_message.edit(content=f"❌ Monitor failed to start:\n```\n{error_msg}\n```")
                 except Exception as e:
                     logger.error(f"Error reading process output: {e}")
-                    await status_message.edit(content="❌ Monitor failed to start")
-                    return
+                    await status_message.edit(content="❌ Monitor failed to start (unknown error)")
+                return
 
             # Verify monitor is actually running with retries
             max_retries = 3
             for attempt in range(max_retries):
                 if self._is_monitor_running(user_id):
-                    success_msg = [
-                        "✅ Monitor started successfully!",
-                        f"Monitoring {store_count} store{'s' if store_count != 1 else ''}.",
-                        "Use !status to check monitor status."
-                    ]
-                    await status_message.edit(content="\n".join(success_msg))
+                    await status_message.edit(content="✅ Monitor started successfully!")
                     return
 
                 logger.info(f"Waiting for monitor to start (attempt {attempt + 1}/{max_retries})")
@@ -336,15 +335,31 @@ class MonitorCommands(commands.Cog):
 
             # If we get here, the monitor didn't start properly
             try:
+                # Try to get any output before terminating
                 process.terminate()
-                await asyncio.sleep(1)
+                try:
+                    stdout, stderr = process.communicate(timeout=2)
+                    error_output = stderr.strip() if stderr else stdout.strip() if stdout else "No error output available"
+                    logger.error(f"Monitor failed to initialize properly. Output: {error_output}")
+
+                    # Format error message for user
+                    error_lines = error_output.split('\n')
+                    if len(error_lines) > 3:
+                        error_msg = '\n'.join(error_lines[-3:])  # Last 3 lines of error
+                    else:
+                        error_msg = error_output
+
+                    await status_message.edit(content=f"❌ Monitor failed to initialize:\n```\n{error_msg}\n```")
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                    logger.error("Monitor process failed to initialize and had to be killed")
+                    await status_message.edit(content="❌ Monitor failed to initialize (process timeout)")
+            except Exception as e:
+                logger.error(f"Error cleaning up monitor process: {e}")
                 if process.poll() is None:
                     process.kill()
-            except Exception as e:
-                logger.error(f"Error terminating failed monitor process: {e}")
-
-            logger.error("Monitor process failed to initialize properly")
-            await status_message.edit(content="❌ Monitor failed to initialize properly")
+                await status_message.edit(content="❌ Monitor failed to initialize (unknown error)")
 
         except Exception as e:
             logger.error(f"Error starting monitor: {str(e)}", exc_info=True)

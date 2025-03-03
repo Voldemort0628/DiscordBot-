@@ -4,6 +4,8 @@ import logging
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
 
 # Configure logging
 log_dir = Path('logs')
@@ -12,13 +14,12 @@ log_dir.mkdir(exist_ok=True)
 log_filename = f'monitor_{datetime.now().strftime("%Y%m%d")}.log'
 log_path = log_dir / log_filename
 
-# Enhanced logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_path),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stdout)  # Log to stdout for subprocess capture
     ]
 )
 
@@ -27,38 +28,50 @@ logger = logging.getLogger('Monitor')
 # Early environment check logging
 logger.info("=== Monitor Starting ===")
 logger.info(f"Environment variables:")
-logging.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
-logging.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
-logging.info(f"Command line args: {sys.argv}")
-logging.info(f"Current working directory: {os.getcwd()}")
-logging.info(f"Python path: {sys.path}")
-logging.info("=====================")
+logger.info(f"MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+logger.info(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
+logger.info(f"DATABASE_URL: {'Set' if os.environ.get('DATABASE_URL') else 'Not set'}")
+logger.info(f"Command line args: {sys.argv}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Python path: {sys.path}")
+logger.info("=====================")
 
-if not os.environ.get('MONITOR_USER_ID'):
-    logging.error("Missing required environment variables: MONITOR_USER_ID")
-    logging.error("Current environment:")
-    logging.error(f"MONITOR_USER_ID: Not set")
-    logging.error(f"DISCORD_WEBHOOK_URL: {'Set' if os.environ.get('DISCORD_WEBHOOK_URL') else 'Not set'}")
-    logging.error(f"Command line args: {sys.argv}")
+# Early validation of required environment variables
+required_vars = ['MONITOR_USER_ID', 'DISCORD_WEBHOOK_URL', 'DATABASE_URL']
+missing_vars = [var for var in required_vars if not os.environ.get(var)]
+if missing_vars:
+    logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
     sys.exit(1)
 
-# Add the current directory to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-    logging.info(f"Added current directory to Python path: {current_dir}")
+try:
+    user_id = int(os.environ.get('MONITOR_USER_ID'))
+except ValueError:
+    logger.error(f"Invalid MONITOR_USER_ID: {os.environ.get('MONITOR_USER_ID')}")
+    sys.exit(1)
 
+# Create Flask app
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
 
+# Import required modules
 try:
     logger.info("Importing required modules...")
     from shopify_monitor import ShopifyMonitor
     from discord_webhook import RateLimitedDiscordWebhook
-    from models import db, User, Store, Keyword, MonitorConfig, init_db
+    from models import db, User, Store, Keyword, MonitorConfig
     from sqlalchemy.exc import OperationalError
     logger.info("All modules imported successfully")
 except ImportError as e:
     logger.error(f"Failed to import required modules: {e}", exc_info=True)
     sys.exit(1)
+
+# Initialize SQLAlchemy with app
+db.init_app(app)
 
 async def monitor_store(store_url, keywords, monitor, webhook, seen_products, user_id):
     """Monitors a single store for products"""
@@ -84,24 +97,6 @@ async def monitor_store(store_url, keywords, monitor, webhook, seen_products, us
         return 0
 
 async def main():
-    # Validate environment
-    user_id = os.environ.get('MONITOR_USER_ID')
-    if not user_id:
-        logger.error("MONITOR_USER_ID not set")
-        return 1
-
-    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
-    if not webhook_url:
-        logger.error("DISCORD_WEBHOOK_URL not set")
-        return 1
-
-    try:
-        user_id = int(user_id)
-        logger.info(f"Starting monitor for user ID: {user_id}")
-    except ValueError:
-        logger.error(f"Invalid MONITOR_USER_ID: {user_id}")
-        return 1
-
     seen_products = set()
 
     # Create process tracking file
@@ -118,88 +113,93 @@ async def main():
         logger.error(f"Failed to create tracking file: {e}")
 
     try:
-        # Initialize database
-        logger.info("Initializing database...")
-        init_db()
-        logger.info("Database initialized successfully")
-
-        # Verify database connection
-        try:
-            db.session.execute('SELECT 1')
-            logger.info("Database connection test successful")
-        except Exception as e:
-            logger.error(f"Database connection test failed: {e}")
-            return 1
-
-        while True:
+        with app.app_context():
+            # Initialize database
+            logger.info("Initializing database...")
             try:
-                # Get user configuration
-                user = db.session.get(User, user_id)
-                if not user or not user.enabled:
-                    logger.error(f"User {user_id} not found or disabled")
-                    return 1
+                db.create_all()
+                logger.info("Database initialized successfully")
 
-                config = MonitorConfig.query.filter_by(user_id=user_id).first()
-                if not config:
-                    logger.error(f"No configuration found for user {user_id}")
-                    return 1
-
-                logger.info(f"Loaded configuration for user {user_id}")
-                logger.info(f"Rate limit: {config.rate_limit} req/s")
-                logger.info(f"Monitor delay: {config.monitor_delay}s")
-
-                # Initialize monitor
-                monitor = ShopifyMonitor(rate_limit=config.rate_limit)
-                webhook = RateLimitedDiscordWebhook(webhook_url=webhook_url)
-
-                while True:
-                    try:
-                        # Refresh user and get stores/keywords
-                        db.session.remove()
-                        user = db.session.get(User, user_id)
-                        if not user or not user.enabled:
-                            logger.warning(f"User {user_id} disabled, exiting")
-                            return 0
-
-                        stores = Store.query.filter_by(user_id=user_id, enabled=True).all()
-                        keywords = [kw.word for kw in Keyword.query.filter_by(user_id=user_id, enabled=True).all()]
-
-                        if not stores or not keywords:
-                            await asyncio.sleep(config.monitor_delay)
-                            continue
-
-                        # Monitor stores
-                        tasks = []
-                        for store in stores:
-                            task = monitor_store(
-                                store.url, 
-                                keywords,
-                                monitor,
-                                webhook,
-                                seen_products,
-                                user_id
-                            )
-                            tasks.append(task)
-
-                        results = await asyncio.gather(*tasks, return_exceptions=True)
-                        total_new = sum(r for r in results if isinstance(r, int))
-
-                        # Adaptive delay based on results
-                        delay = config.monitor_delay * (0.25 if total_new > 0 else 1.0)
-                        await asyncio.sleep(max(0.05, delay))
-
-                    except OperationalError as e:
-                        logger.error(f"Database connection error: {e}", exc_info=True)
-                        await asyncio.sleep(5)
-                        break
-
-                    except Exception as e:
-                        logger.error(f"Error in monitor loop: {e}", exc_info=True)
-                        await asyncio.sleep(2)
-
+                # Verify database connection
+                db.session.execute('SELECT 1')
+                logger.info("Database connection test successful")
             except Exception as e:
-                logger.error(f"Fatal error: {e}", exc_info=True)
-                await asyncio.sleep(5)
+                logger.error(f"Database initialization error: {e}", exc_info=True)
+                return 1
+
+            logger.info("Starting main monitoring loop...")
+            while True:
+                try:
+                    # Get user configuration
+                    user = db.session.get(User, user_id)
+                    if not user or not user.enabled:
+                        logger.error(f"User {user_id} not found or disabled")
+                        return 1
+
+                    config = MonitorConfig.query.filter_by(user_id=user_id).first()
+                    if not config:
+                        logger.error(f"No configuration found for user {user_id}")
+                        return 1
+
+                    logger.info(f"Loaded configuration for user {user_id}")
+                    logger.info(f"Rate limit: {config.rate_limit} req/s")
+                    logger.info(f"Monitor delay: {config.monitor_delay}s")
+
+                    # Initialize monitor
+                    monitor = ShopifyMonitor(rate_limit=config.rate_limit)
+                    webhook = RateLimitedDiscordWebhook(webhook_url=os.environ.get('DISCORD_WEBHOOK_URL'))
+
+                    while True:
+                        try:
+                            # Refresh user and get stores/keywords
+                            db.session.remove()
+                            user = db.session.get(User, user_id)
+                            if not user or not user.enabled:
+                                logger.warning(f"User {user_id} disabled, exiting")
+                                return 0
+
+                            stores = Store.query.filter_by(user_id=user_id, enabled=True).all()
+                            keywords = [kw.word for kw in Keyword.query.filter_by(user_id=user_id, enabled=True).all()]
+
+                            if not stores or not keywords:
+                                logger.info("No stores or keywords configured, waiting...")
+                                await asyncio.sleep(config.monitor_delay)
+                                continue
+
+                            logger.info(f"Monitoring {len(stores)} stores with {len(keywords)} keywords")
+
+                            # Monitor stores
+                            tasks = []
+                            for store in stores:
+                                task = monitor_store(
+                                    store.url,
+                                    keywords,
+                                    monitor,
+                                    webhook,
+                                    seen_products,
+                                    user_id
+                                )
+                                tasks.append(task)
+
+                            results = await asyncio.gather(*tasks, return_exceptions=True)
+                            total_new = sum(r for r in results if isinstance(r, int))
+
+                            # Adaptive delay based on results
+                            delay = config.monitor_delay * (0.25 if total_new > 0 else 1.0)
+                            await asyncio.sleep(max(0.05, delay))
+
+                        except OperationalError as e:
+                            logger.error(f"Database connection error: {e}", exc_info=True)
+                            await asyncio.sleep(5)
+                            break
+
+                        except Exception as e:
+                            logger.error(f"Error in monitor loop: {e}", exc_info=True)
+                            await asyncio.sleep(2)
+
+                except Exception as e:
+                    logger.error(f"Fatal error: {e}", exc_info=True)
+                    await asyncio.sleep(5)
 
     finally:
         # Cleanup tracking file on exit
